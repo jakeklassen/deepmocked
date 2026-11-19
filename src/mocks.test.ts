@@ -429,6 +429,42 @@ describe('Mocks', () => {
 			expect(mock.func.getMockImplementation()).toBe(impl);
 		});
 
+		it('should return the mock itself from chainable Mock API methods', () => {
+			const mock = createMock<TestInterface>();
+
+			expect(mock.func.mockReturnValue(true)).toBe(mock.func);
+			expect(mock.func.mockReturnValueOnce(false)).toBe(mock.func);
+			expect(mock.func.mockImplementation(() => true)).toBe(mock.func);
+			expect(mock.func.mockImplementationOnce(() => true)).toBe(mock.func);
+			expect(mock.func.mockThrow(new Error())).toBe(mock.func);
+			expect(mock.func.mockThrowOnce(new Error())).toBe(mock.func);
+			expect(mock.func.mockName('func')).toBe(mock.func);
+			expect(mock.func.mockClear()).toBe(mock.func);
+			expect(mock.func.mockReset()).toBe(mock.func);
+			expect(mock.func3.mockResolvedValue({ prop: 1 })).toBe(mock.func3);
+			expect(mock.func3.mockResolvedValueOnce({ prop: 1 })).toBe(mock.func3);
+			expect(mock.func3.mockRejectedValue(new Error())).toBe(mock.func3);
+			expect(mock.func3.mockRejectedValueOnce(new Error())).toBe(mock.func3);
+		});
+
+		it('should keep auto-mocking on functions returned by chained Mock API calls', () => {
+			const mock = createMock<{ getUser: () => { id: number } }>();
+
+			const getUser = mock.getUser.mockReturnValueOnce({ id: 1 });
+
+			expect(getUser().id).toBe(1);
+			// Once the one-off value is used up, the chained function should still
+			// auto-mock its return value instead of returning undefined
+			expect(getUser()).toBeDefined();
+			expect(getUser().id).toBe(getUser().id);
+		});
+
+		it('should return a stable reference for Mock API methods', () => {
+			const mock = createMock<TestInterface>();
+
+			expect(mock.func.mockReturnValue).toBe(mock.func.mockReturnValue);
+		});
+
 		it('should report assertion failures on mocks instead of throwing a TypeError', () => {
 			const mock = createMock<TestInterface>();
 

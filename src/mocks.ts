@@ -226,7 +226,23 @@ const createProxy: {
 			// For auto-mocked functions (no base), allow direct access to Vitest Mock API properties
 			// This ensures methods like mockImplementation work correctly
 			if (!base && vitestFnProps.has(propName)) {
-				return Reflect.get(obj, prop, receiver);
+				const value: unknown = Reflect.get(obj, prop, receiver);
+
+				if (typeof value !== 'function') {
+					return value;
+				}
+
+				if (!cache.has(prop)) {
+					// Mock API methods return the underlying vi.fn() for chaining. Return the
+					// proxy instead so chained calls keep auto-mocking, as the types promise.
+					cache.set(prop, function (this: unknown, ...args: unknown[]) {
+						const result: unknown = Reflect.apply(value, this, args);
+
+						return result === obj ? proxy : result;
+					});
+				}
+
+				return cache.get(prop);
 			}
 
 			// Return cached value if we've already created a mock for this property
@@ -300,7 +316,9 @@ const createProxy: {
 			return cache.get('__apply');
 		};
 	}
-	return new Proxy(base || (vi.fn() as T), handler);
+	const proxy = new Proxy(base || (vi.fn() as T), handler);
+
+	return proxy;
 };
 
 export type MockOptions = {
