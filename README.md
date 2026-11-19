@@ -43,7 +43,7 @@ bun add -d deepmocked
 
 Each adapter uses the mock library you already have installed (`vitest` for `deepmocked/vitest`); none of them are installed for you. `deepmocked/node` needs nothing beyond Node itself (and `@types/node` for types). `deepmocked/sinon` needs `sinon` 22 (and `@types/sinon` for types).
 
-`deepmocked` is ESM-only. Modern Node can `require()` it, but TypeScript projects that compile to CommonJS (`.cts` files, or `module: node16` without `"type": "module"`) can't import it.
+`deepmocked` is ESM-only: import it from ES modules. Modern Node can `require()` it, and TypeScript allows that from CommonJS files under `module: nodenext`, but not under the older `module: node16`. With `deepmocked/sinon`, import Sinon as ESM too: Sinon's CommonJS and ESM builds have separate default sandboxes, so a `sinon.reset()` from `require('sinon')` doesn't reach these mocks.
 
 ### Migrating from `vitest-create-mock`
 
@@ -129,8 +129,8 @@ sinon.assert.calledOnceWithExactly(userService.getUser, 1);
 userService.deleteUser.rejects(new Error('forbidden'));
 ```
 
-- The whole Sinon stub API works: `returns`, `resolves`, `throws`, `callsFake`, `withArgs`, `onCall`, `calledWith`, `getCall`, ... and so do `sinon.assert` and other Sinon-aware assertion libraries.
-- Stubs are created with `sinon.stub()`, so `sinon.reset()` / `sinon.resetHistory()` apply to them. After any reset (`stub.reset()`, `stub.resetBehavior()`, `sinon.reset()`), unstubbed calls go back to returning auto-mocks, and a partial's implementation comes back.
+- Sinon's spy and stub API works: `returns`, `resolves`, `throws`, `callsFake`, `callsArg`, `withArgs`, `onCall`, `calledWith`, `getCall`, ... and so do `sinon.assert` and [sinon-chai](https://github.com/chaijs/sinon-chai). `callThrough` doesn't apply, since these stubs don't wrap a real method.
+- Stubs are created with `sinon.stub()` in Sinon's default sandbox, so `sinon.reset()` / `sinon.resetHistory()` apply to them, but cleaning up your own `sinon.createSandbox()` doesn't. After any reset (`stub.reset()`, `stub.resetBehavior()`, `sinon.reset()`), unstubbed calls go back to returning auto-mocks, and a partial's implementation comes back. Stubs you pass in yourself keep Sinon's usual reset behavior.
 - One Sinon-specific quirk: values returned by unstubbed calls are stubs too, and Sinon's cross-stub checks (`calledBefore`, `sinon.assert.callOrder`, ...) need their `id`. So `id` on such a value is Sinon's stub id rather than an auto-mock. Stub `id` explicitly if your code reads it.
 
 The rest of this README uses Vitest in its examples.
@@ -170,7 +170,8 @@ Recursively transforms a type so that all methods become Vitest mocks while pres
 - **Primitives**: Left as-is
 - **Excluded properties**: `then` and `asymmetricMatch` are excluded to prevent interference with Promise detection and Vitest matchers
 - **Depth fallback**: At very deep nesting levels, function signatures gracefully degrade to permissive typing to avoid TypeScript complexity limits
-- **Known limitations**: overloaded methods are typed by their last overload, and generic methods lose their type parameters
+- **Arrays and built-ins**: arrays, `Date`, `Map`, `Set`, `RegExp`, `Error` and their weak variants keep their real types (they're never deep-mocked)
+- **Known limitations**: overloaded methods are typed by their last overload; generic methods lose their type parameters; constructor types aren't mocked; values your own implementations return are typed as mocks although they're returned as-is; an unstubbed async call can be awaited but its result has no working `.then()`; with Sinon, `withArgs()`/`returns()`/`callsFake()` return Sinon's own stub type, so chaining off them loses deep-mocked return types
 
 #### `PartialFuncReturn<T>`
 
@@ -244,7 +245,7 @@ const request = context.switchToHttp().getRequest();
 expect(request.headers.authorization).toBe('Bearer token');
 ```
 
-Values returned by your own implementations are returned exactly as you wrote them (not wrapped in mocks), so `toBe` against them keeps working.
+Values returned by your own implementations are returned exactly as you wrote them (not wrapped in mocks), so `toBe` against them keeps working. The types can't tell those apart from auto-mocked return values, so they still describe them as mocks: don't call mock methods on a function or object your implementation returned.
 
 ### Nested Partials
 
@@ -267,7 +268,12 @@ expect(service.repo.find).toHaveBeenCalledWith(1);
 service.repo.save(user); // `save` wasn't provided: auto-mocked
 ```
 
-`service.repo` is a mock wrapping the object you passed, so it equals it (`toEqual`) but isn't the same object (`toBe`). Existing mocks, class instances, arrays and other non-plain objects are used as-is, and so are values of frozen objects (JavaScript doesn't allow a proxy to replace them).
+`service.repo` is a mock wrapping the object you passed, not the same object (`toBe` fails), and its methods are mocks rather than your functions, so `toEqual` against the original only matches when it has no methods.
+
+- An object you reference from two places (or from itself) becomes one mock, so stubbing it through either path affects both.
+- Values are read live from your object: changes you make to it later, getters and deletes all show up. Getters run with the mock as `this`, so `this.method()` inside them calls the mock.
+- Existing mocks, arrays, and class instances (and other non-plain objects) are used as-is. A class instance passed as the whole partial runs its methods as itself, so `#private` fields work.
+- Values of frozen objects are used as-is too: JavaScript doesn't allow a proxy to replace them.
 
 ### Using Mock Methods
 
