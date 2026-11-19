@@ -57,7 +57,10 @@ const apiKeys: ReadonlySet<string> = new Set([
 const vitestAdapter: MockAdapter = {
 	fn: (implementation) => vi.fn(implementation),
 	isMock: (value) => vi.isMockFunction(value),
-	hasImplementation: (mock) => Boolean((mock as Mock).getMockImplementation()),
+	// Unchanged from vitest-create-mock: a configured implementation, or any
+	// non-undefined result, counts as stubbed
+	isStubbedCall: (mock, result) =>
+		Boolean((mock as Mock).getMockImplementation()) || result !== undefined,
 	apiKeys,
 };
 

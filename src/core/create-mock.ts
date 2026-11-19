@@ -5,15 +5,19 @@ import type { AnyFunction, CreateMock, MockKind, MockOptions } from './types';
  * (`deepmocked/vitest`, ...) provides one of these.
  */
 export interface MockAdapter {
-	/** Create a mock function, optionally wrapping an implementation. */
+	/**
+	 * Create a mock function, optionally wrapping an implementation. Called without one
+	 * for auto-mocked functions.
+	 */
 	fn: (implementation?: AnyFunction) => AnyFunction;
 	/** Whether a value is already a mock function from this library. */
 	isMock: (value: unknown) => boolean;
 	/**
-	 * Whether the user configured behavior on this mock. When they haven't and a call
-	 * returns `undefined`, the call returns a nested auto-mock instead.
+	 * Called right after an auto-mocked function runs: whether that call was handled by
+	 * behavior the user configured. When it wasn't, the call returns a nested auto-mock
+	 * instead (or throws in strict mode).
 	 */
-	hasImplementation: (mock: AnyFunction) => boolean;
+	isStubbedCall: (mock: AnyFunction, result: unknown) => boolean;
 	/**
 	 * The library's own API on a mock function (`mockReturnValue`, `mock`, ...). These are
 	 * passed straight to the underlying mock instead of being auto-mocked.
@@ -156,11 +160,8 @@ export const createMockFactory = <M extends MockKind>(
 					argsArray,
 				);
 
-				// If the function has a user-provided implementation or returned a value, use it
-				if (
-					adapter.hasImplementation(fnTarget as AnyFunction) ||
-					result !== undefined
-				) {
+				// If the user stubbed this call, use its result as-is
+				if (adapter.isStubbedCall(fnTarget as AnyFunction, result)) {
 					return result;
 				}
 
