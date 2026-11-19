@@ -29,36 +29,46 @@ export type MockOf<K extends MockKind, F extends AnyFunction> = (K & {
 })['mock'];
 
 /**
- * Recursively makes all properties of a type optional and applies the same transformation
- * to nested objects. Arrays are preserved but their elements are made deeply partial.
- * Unknown types are left as-is since we can't make assumptions about their structure.
+ * What a partial may supply for a value of type `V`, checked at every level:
+ * - a function: an implementation (whose return value is checked the same way) or an
+ *   existing mock of it (mock composition)
+ * - a Promise: a Promise of a valid value
+ * - an array: an array of valid elements; other built-ins: the real thing
+ * - an object: a partial of it (recursively), or an existing mock of it
+ * - `null`/`undefined` where `V` allows them; anything else: a `V`
  */
-export type DeepPartial<T> = {
-	[P in keyof T]?: T[P] extends Array<infer U>
-		? Array<DeepPartial<U>>
-		: T[P] extends ReadonlyArray<infer U>
-			? ReadonlyArray<DeepPartial<U>>
-			: unknown extends T[P]
-				? T[P]
-				: DeepPartial<T[P]>;
-};
+type PartialValue<V, M extends MockKind> =
+	IsAny<V> extends true
+		? V
+		: IsUnknown<V> extends true
+			? V
+			: IsOnlyNullish<V> extends true
+				? V
+				: NonNullable<V> extends (...args: infer A) => infer U
+					? | ((...args: A) => PartialValue<U, M>)
+						| (NonNullable<V> & MockOf<M, NonNullable<V>>)
+						| Nullish<V>
+					: NonNullable<V> extends Promise<infer P>
+						? Promise<PartialValue<P, M>> | Nullish<V>
+						: NonNullable<V> extends Array<infer E>
+							? Array<PartialValue<E, M>> | Nullish<V>
+							: NonNullable<V> extends ReadonlyArray<infer E>
+								? ReadonlyArray<PartialValue<E, M>> | Nullish<V>
+								: NonNullable<V> extends Unmocked
+									? V
+									: NonNullable<V> extends object
+										? | PartialFuncReturn<NonNullable<V>, M>
+											| DeepMocked<NonNullable<V>, M>
+											| Nullish<V>
+										: V;
 
 /**
- * Type for the partial object passed to createMock. All properties are optional.
- * - Functions can be provided as implementations OR as already-mocked DeepMocked functions
- *   (enabling mock composition - passing pre-built mocks to other mocks)
- * - Non-function properties can be partial values OR already-mocked DeepMocked objects
- * This dual support prevents double-wrapping and allows flexible mock composition.
+ * Type for the partial object passed to createMock. All properties are optional, and
+ * every supplied value is checked recursively (see `PartialValue`): functions as
+ * implementations or existing mocks, nested objects as partials or existing mocks.
  */
 export type PartialFuncReturn<T, M extends MockKind> = {
-	[K in keyof T]?: IsOnlyNullish<T[K]> extends true
-		? T[K]
-		: NonNullable<T[K]> extends (...args: infer A) => infer U
-			? // An implementation, or an existing mock of this function (mock composition)
-				| ((...args: A) => PartialFuncReturn<U, M>)
-				| (NonNullable<T[K]> & MockOf<M, NonNullable<T[K]>>)
-				| Nullish<T[K]>
-			: DeepPartial<T[K]> | DeepMocked<T[K], M>;
+	[K in keyof T]?: PartialValue<T[K], M>;
 };
 
 /**

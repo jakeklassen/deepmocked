@@ -927,6 +927,31 @@ describe('Mocks', () => {
 			expectTypeOf(mock.read).toExtend<Mock | null>();
 		});
 
+		it('should check partials at every level', () => {
+			// Type-level only (never called)
+			const unsafe = () => {
+				// @ts-expect-error a nested method can't be an object
+				createMock<{ repo: { find: () => number } }>({ repo: { find: {} } });
+				// @ts-expect-error a returned function can't be a number
+				createMock<{ make: () => () => number }>({ make: () => 42 });
+				createMock<{ load: () => Promise<{ n: number }> }>({
+					// @ts-expect-error a Promise-returning method can't return a plain object
+					load: () => ({}),
+				});
+			};
+			void unsafe;
+
+			createMock<{ repo: { find: () => number; save: () => void } }>({
+				repo: { find: () => 1 },
+			});
+			createMock<{ load: () => Promise<{ n: number; label: string }> }>({
+				load: async () => ({ n: 1 }),
+			});
+			createMock<{ items: { id: number; name: string }[] }>({
+				items: [{ id: 1 }],
+			});
+		});
+
 		it('should reject partials that are not implementations or mocks', () => {
 			interface Reader {
 				read: (id: number) => string;
