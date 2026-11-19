@@ -11,10 +11,134 @@ import type {
 
 export type { MockOptions };
 
-/** Types every mocked function as a Sinon `SinonStub`. Internal: not part of the public API. */
+/** Sinon stub methods that return the stub itself, for chaining. */
+type ChainingMethod =
+	| 'returns'
+	| 'returnsArg'
+	| 'returnsThis'
+	| 'resolves'
+	| 'resolvesArg'
+	| 'resolvesThis'
+	| 'rejects'
+	| 'throws'
+	| 'throwsArg'
+	| 'throwsException'
+	| 'callsFake'
+	| 'callThrough'
+	| 'callsArg'
+	| 'callsArgAsync'
+	| 'callsArgOn'
+	| 'callsArgOnAsync'
+	| 'callsArgWith'
+	| 'callsArgWithAsync'
+	| 'callsArgOnWith'
+	| 'callsArgOnWithAsync'
+	| 'yields'
+	| 'yieldsAsync'
+	| 'yieldsOn'
+	| 'yieldsOnAsync'
+	| 'yieldsRight'
+	| 'yieldsTo'
+	| 'yieldsToAsync'
+	| 'yieldsToOn'
+	| 'yieldsToOnAsync'
+	| 'named'
+	| 'resetBehavior'
+	| 'withArgs';
+
+/**
+ * Sinon's chaining methods, returning `this`. In the intersection that types a mocked
+ * function, `this` is the whole mocked function, so `stub.withArgs(1).returns(x)()`
+ * keeps the deeply mocked return type instead of falling back to a plain SinonStub.
+ * (At runtime these return the mock itself; `withArgs` returns a child stub that
+ * falls back to the same default.)
+ */
+export interface SinonChaining<TArgs extends readonly unknown[], TReturn> {
+	returns(...args: Parameters<SinonStub<TArgs, TReturn>['returns']>): this;
+	returnsArg(
+		...args: Parameters<SinonStub<TArgs, TReturn>['returnsArg']>
+	): this;
+	returnsThis(
+		...args: Parameters<SinonStub<TArgs, TReturn>['returnsThis']>
+	): this;
+	resolves(...args: Parameters<SinonStub<TArgs, TReturn>['resolves']>): this;
+	resolvesArg(
+		...args: Parameters<SinonStub<TArgs, TReturn>['resolvesArg']>
+	): this;
+	resolvesThis(
+		...args: Parameters<SinonStub<TArgs, TReturn>['resolvesThis']>
+	): this;
+	rejects(...args: Parameters<SinonStub<TArgs, TReturn>['rejects']>): this;
+	throws(...args: Parameters<SinonStub<TArgs, TReturn>['throws']>): this;
+	throwsArg(...args: Parameters<SinonStub<TArgs, TReturn>['throwsArg']>): this;
+	throwsException(
+		...args: Parameters<SinonStub<TArgs, TReturn>['throwsException']>
+	): this;
+	callsFake(...args: Parameters<SinonStub<TArgs, TReturn>['callsFake']>): this;
+	callThrough(
+		...args: Parameters<SinonStub<TArgs, TReturn>['callThrough']>
+	): this;
+	callsArg(...args: Parameters<SinonStub<TArgs, TReturn>['callsArg']>): this;
+	callsArgAsync(
+		...args: Parameters<SinonStub<TArgs, TReturn>['callsArgAsync']>
+	): this;
+	callsArgOn(
+		...args: Parameters<SinonStub<TArgs, TReturn>['callsArgOn']>
+	): this;
+	callsArgOnAsync(
+		...args: Parameters<SinonStub<TArgs, TReturn>['callsArgOnAsync']>
+	): this;
+	callsArgWith(
+		...args: Parameters<SinonStub<TArgs, TReturn>['callsArgWith']>
+	): this;
+	callsArgWithAsync(
+		...args: Parameters<SinonStub<TArgs, TReturn>['callsArgWithAsync']>
+	): this;
+	callsArgOnWith(
+		...args: Parameters<SinonStub<TArgs, TReturn>['callsArgOnWith']>
+	): this;
+	callsArgOnWithAsync(
+		...args: Parameters<SinonStub<TArgs, TReturn>['callsArgOnWithAsync']>
+	): this;
+	yields(...args: Parameters<SinonStub<TArgs, TReturn>['yields']>): this;
+	yieldsAsync(
+		...args: Parameters<SinonStub<TArgs, TReturn>['yieldsAsync']>
+	): this;
+	yieldsOn(...args: Parameters<SinonStub<TArgs, TReturn>['yieldsOn']>): this;
+	yieldsOnAsync(
+		...args: Parameters<SinonStub<TArgs, TReturn>['yieldsOnAsync']>
+	): this;
+	yieldsRight(
+		...args: Parameters<SinonStub<TArgs, TReturn>['yieldsRight']>
+	): this;
+	yieldsTo(...args: Parameters<SinonStub<TArgs, TReturn>['yieldsTo']>): this;
+	yieldsToAsync(
+		...args: Parameters<SinonStub<TArgs, TReturn>['yieldsToAsync']>
+	): this;
+	yieldsToOn(
+		...args: Parameters<SinonStub<TArgs, TReturn>['yieldsToOn']>
+	): this;
+	yieldsToOnAsync(
+		...args: Parameters<SinonStub<TArgs, TReturn>['yieldsToOnAsync']>
+	): this;
+	named(...args: Parameters<SinonStub<TArgs, TReturn>['named']>): this;
+	resetBehavior(
+		...args: Parameters<SinonStub<TArgs, TReturn>['resetBehavior']>
+	): this;
+	withArgs(...args: Parameters<SinonStub<TArgs, TReturn>['withArgs']>): this;
+}
+
+/** A Sinon stub whose chaining methods keep the mocked function's type. */
+type ChainingSinonStub<TArgs extends readonly unknown[], TReturn> = Omit<
+	SinonStub<TArgs, TReturn>,
+	ChainingMethod
+> &
+	SinonChaining<TArgs, TReturn>;
+
+/** Types every mocked function as a Sinon stub. Internal: not part of the public API. */
 interface SinonMockKind extends MockKind {
 	readonly mock: this['fn'] extends infer F extends AnyFunction
-		? SinonStub<Parameters<F>, ReturnType<F>>
+		? ChainingSinonStub<Parameters<F>, ReturnType<F>>
 		: never;
 }
 

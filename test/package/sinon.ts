@@ -14,6 +14,7 @@ export async function usage(): Promise<number> {
 
 	service.getUser.resolves({ name: 'Ada', load: () => 1 });
 	(await service.getUser(1)).load.returns(2);
+	(await service.getUser.withArgs(2)(2)).load.returns(3);
 	sinon.assert.calledOnceWithExactly(service.getUser, 1);
 
 	// @ts-expect-error wrong argument type

@@ -171,7 +171,7 @@ Recursively transforms a type so that all methods become Vitest mocks while pres
 - **Excluded properties**: `then` and `asymmetricMatch` are excluded to prevent interference with Promise detection and Vitest matchers
 - **Depth fallback**: At very deep nesting levels, function signatures gracefully degrade to permissive typing to avoid TypeScript complexity limits
 - **Arrays and built-ins**: arrays, `Date`, `Map`, `Set`, `RegExp`, `Error` and their weak variants keep their real types (they're never deep-mocked)
-- **Known limitations**: overloaded methods are typed by their last overload; generic methods lose their type parameters; constructor types aren't mocked; values your own implementations return are typed as mocks although they're returned as-is; an unstubbed async call can be awaited but its result has no working `.then()`; with Sinon, `withArgs()`/`returns()`/`callsFake()` return Sinon's own stub type, so chaining off them loses deep-mocked return types
+- **Known limitations**: overloaded methods are typed by their last overload; generic methods lose their type parameters; constructor types aren't mocked; values your own implementations return are typed as mocks although they're returned as-is; an unstubbed async call can be awaited but its result has no working `.then()`; with Sinon, `onCall()` and `onFirstCall()`/... return Sinon's own behavior type, so calling through them loses deep-mocked return types (other chaining methods like `withArgs()` and `returns()` keep them)
 
 #### `PartialFuncReturn<T>`
 

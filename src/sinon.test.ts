@@ -371,6 +371,28 @@ describe('createMock (sinon)', () => {
 			void unsafe;
 		});
 
+		test('keeps deep return types through chained configuration', () => {
+			const service = createMock<{
+				get: (id: number) => { f: () => number };
+			}>();
+
+			const viaWithArgs = service.get.withArgs(1)(1);
+			const viaReturns = service.get.returns({ f: () => 1 });
+			viaWithArgs.f();
+
+			assert.equal(viaWithArgs.f.callCount, 1);
+			assert.equal(viaReturns, service.get);
+
+			// Type-level only (never called)
+			const unsafe = () => {
+				// @ts-expect-error returns() still takes the real return type
+				service.get.returns('nope');
+				// @ts-expect-error arguments are still checked after withArgs()
+				service.get.withArgs(1)('x');
+			};
+			void unsafe;
+		});
+
 		test('types functions returned from calls as stubs', () => {
 			const factory = createMock<{ make: () => (id: number) => string }>();
 
