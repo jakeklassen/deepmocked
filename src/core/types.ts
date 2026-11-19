@@ -51,12 +51,14 @@ export type DeepPartial<T> = {
  * This dual support prevents double-wrapping and allows flexible mock composition.
  */
 export type PartialFuncReturn<T, M extends MockKind> = {
-	[K in keyof T]?: NonNullable<T[K]> extends (...args: infer A) => infer U
-		? // An implementation, or an existing mock of this function (mock composition)
-			| ((...args: A) => PartialFuncReturn<U, M>)
-			| MockOf<M, NonNullable<T[K]>>
-			| (null extends T[K] ? null : never)
-		: DeepPartial<T[K]> | DeepMocked<T[K], M>;
+	[K in keyof T]?: IsOnlyNullish<T[K]> extends true
+		? T[K]
+		: NonNullable<T[K]> extends (...args: infer A) => infer U
+			? // An implementation, or an existing mock of this function (mock composition)
+				| ((...args: A) => PartialFuncReturn<U, M>)
+				| (NonNullable<T[K]> & MockOf<M, NonNullable<T[K]>>)
+				| Nullish<T[K]>
+			: DeepPartial<T[K]> | DeepMocked<T[K], M>;
 };
 
 /**
@@ -78,6 +80,24 @@ type IsAny<T> = 0 extends 1 & T ? true : false;
 
 /** The `null` and `undefined` members of `T`, kept on mocked members so narrowing stays required. */
 type Nullish<T> = Extract<T, null | undefined>;
+
+/** Whether `T` is nothing but `null` and/or `undefined` (its non-nullable part is `never`). */
+type IsOnlyNullish<T> = [NonNullable<T>] extends [never] ? true : false;
+
+/**
+ * Built-in classes the runtime never deep-mocks (it only wraps plain objects), so their
+ * members keep their real types. Mapping them would also break assignability: arrays,
+ * for one, have overloaded methods that a mapped mock can't reproduce.
+ */
+type Unmocked =
+	| ReadonlyArray<unknown>
+	| Date
+	| RegExp
+	| Error
+	| Map<unknown, unknown>
+	| Set<unknown>
+	| WeakMap<WeakKey, unknown>
+	| WeakSet<WeakKey>;
 
 /**
  * Tuple type used to track recursion depth in DeepMocked.
@@ -134,8 +154,20 @@ type DeepMockedValue<T, D extends number[], M extends MockKind> =
 			? // oxlint-disable-next-line typescript/no-explicit-any -- fallback for exhausted depth
 				any
 			: T extends AnyFunction
-				? MockedFunctionWithDepth<T, D, M>
+				? MockedCallable<T, D, M>
 				: DeepMockedWithDepth<T, D, M>;
+
+/**
+ * A mocked function plus mocks of any properties its type declares (e.g. a returned
+ * `fn & { cancel(): void }`). Plain function types declare none, so this is just the
+ * mocked function for them.
+ */
+type MockedCallable<
+	T extends AnyFunction,
+	D extends number[],
+	M extends MockKind,
+> = MockedFunctionWithDepth<T, D, M> &
+	DeepMockedWithDepth<T, DecrementDepth<D>, M>;
 
 /**
  * Properties that should be excluded from mocking to prevent interference
@@ -169,12 +201,20 @@ type DeepMockedWithDepth<
 				]: IsUnknown<T[K]> extends true
 					? // oxlint-disable-next-line typescript/no-explicit-any -- unknown types become any for proxy support
 						any
-					: NonNullable<T[K]> extends AnyFunction
-						? MockedFunctionWithDepth<NonNullable<T[K]>, D, M> | Nullish<T[K]>
-						: NonNullable<T[K]> extends object
-							? | DeepMockedWithDepth<NonNullable<T[K]>, DecrementDepth<D>, M>
-								| Nullish<T[K]>
-							: T[K];
+					: IsOnlyNullish<T[K]> extends true
+						? T[K]
+						: NonNullable<T[K]> extends AnyFunction
+							? MockedCallable<NonNullable<T[K]>, D, M> | Nullish<T[K]>
+							: NonNullable<T[K]> extends Unmocked
+								? T[K]
+								: NonNullable<T[K]> extends object
+									? | DeepMockedWithDepth<
+												NonNullable<T[K]>,
+												DecrementDepth<D>,
+												M
+										  >
+										| Nullish<T[K]>
+									: T[K];
 			};
 
 /**

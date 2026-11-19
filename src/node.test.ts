@@ -289,6 +289,19 @@ describe('createMock (node:test)', () => {
 			void wrongArgument;
 		});
 
+		test('keeps members that are only null or undefined as they are', () => {
+			const service = createMock<{ none: null; missing: undefined }>({
+				none: null,
+				missing: undefined,
+			});
+
+			const none: null = service.none;
+			const missing: undefined = service.missing;
+
+			assert.equal(none, null);
+			assert.equal(missing, undefined);
+		});
+
 		test('keeps null on nullable members', () => {
 			const service = createMock<{ read: ((id: number) => string) | null }>({
 				read: null,
@@ -304,6 +317,13 @@ describe('createMock (node:test)', () => {
 		test('rejects partials that are not implementations or mocks', () => {
 			// @ts-expect-error a number is not an implementation
 			createMock<UserService>({ save: 123 });
+			// Type-level only (never called): a bare mock context isn't callable
+			const contextOnly = () =>
+				createMock<UserService>({
+					// @ts-expect-error not callable
+					save: { mock: mock.fn((_user: User) => true).mock },
+				});
+			void contextOnly;
 
 			createMock<UserService>({
 				save: () => true,

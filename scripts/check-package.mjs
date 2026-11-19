@@ -73,6 +73,7 @@ for (const [module, moduleResolution] of [
 				types: ['node'],
 				noEmit: true,
 				skipLibCheck: false,
+				exactOptionalPropertyTypes: true,
 			},
 			files: ['vitest.ts', 'node.ts', 'sinon.ts'],
 		}),

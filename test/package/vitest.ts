@@ -20,6 +20,11 @@ export async function usage(): Promise<string> {
 	service.save(1);
 	// @ts-expect-error a number is not an implementation
 	createMock<UserService>({ save: 1 });
+	// Explicit undefined is allowed where the type allows it (checked with
+	// exactOptionalPropertyTypes on)
+	createMock<{ save: ((name: string) => boolean) | undefined }>({
+		save: undefined,
+	});
 
 	return (await service.getUser(1)).name;
 }

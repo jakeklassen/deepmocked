@@ -864,6 +864,51 @@ describe('Mocks', () => {
 			made('wrong');
 		});
 
+		it('should keep members that are only null or undefined as they are', () => {
+			const mock = createMock<{ none: null; missing: undefined }>({
+				none: null,
+				missing: undefined,
+			});
+
+			expectTypeOf(mock.none).toEqualTypeOf<null>();
+			expectTypeOf(mock.missing).toEqualTypeOf<undefined>();
+		});
+
+		it('should mock the properties of callable values', () => {
+			type Cancellable = (() => number) & { cancel: () => void };
+			const mock = createMock<{
+				start: () => Cancellable;
+				current: Cancellable;
+			}>();
+
+			const started = mock.start();
+			started.cancel.mockReturnValue(undefined);
+			started.cancel();
+
+			expect(started.cancel).toHaveBeenCalledTimes(1);
+			expectTypeOf(started.cancel).toExtend<Mock>();
+			expectTypeOf(mock.current.cancel).toExtend<Mock>();
+		});
+
+		it('should keep arrays and built-in classes as their real types', () => {
+			interface Report {
+				items: readonly number[];
+				when: Date;
+				tags: Set<string>;
+			}
+			const mock = createMock<Report>({
+				items: [1],
+				when: new Date(0),
+				tags: new Set(),
+			});
+
+			const report: Report = mock;
+
+			expect(report.items).toEqual([1]);
+			expectTypeOf(mock.items).toEqualTypeOf<readonly number[]>();
+			expectTypeOf(mock.when).toEqualTypeOf<Date>();
+		});
+
 		it('should keep null on nullable members', () => {
 			const mock = createMock<{
 				read: ((id: number) => string) | null;
