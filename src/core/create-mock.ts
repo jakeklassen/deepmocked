@@ -56,19 +56,32 @@ const isPlainObject = (value: unknown): value is object => {
 };
 
 /**
- * A proxy's get trap must return the exact value of a non-configurable, read-only
- * property (e.g. on a frozen object), so those can't be wrapped.
+ * A proxy's get trap must return a property's real value when the target forbids
+ * anything else: a non-configurable, read-only data property (e.g. on a frozen object),
+ * or a non-configurable accessor without a getter (which must read as undefined).
  */
 const mustReturnAsIs = (obj: object, prop: string | symbol): boolean => {
 	const descriptor = Reflect.getOwnPropertyDescriptor(obj, prop);
 
-	return (
-		descriptor !== undefined &&
-		!descriptor.configurable &&
-		'value' in descriptor &&
-		!descriptor.writable
-	);
+	if (descriptor === undefined || descriptor.configurable) {
+		return false;
+	}
+
+	return 'value' in descriptor
+		? !descriptor.writable
+		: descriptor.get === undefined;
 };
+
+/**
+ * State shared by every proxy created for one `createMock()` call, so the same original
+ * value always maps to the same mock: an object referenced twice (or by itself) is one
+ * mock, and a function used in two places is one mock function.
+ */
+interface MockTree {
+	readonly strict: boolean;
+	readonly objects: WeakMap<object, object>;
+	readonly functions: WeakMap<AnyFunction, AnyFunction>;
+}
 
 /**
  * Builds a `createMock` function for a mock library.
@@ -85,41 +98,95 @@ export const createMockFactory = <M extends MockKind>(
 	 * An auto-mocked function: its default implementation returns the same nested
 	 * auto-mock on every call, or throws in strict mode.
 	 */
-	const createAutoMockedFunction = (name: string, strict: boolean): object => {
+	const createAutoMockedFunction = (name: string, tree: MockTree): object => {
 		let returned: object | undefined;
 
 		return adapter.fn(function unstubbed(): unknown {
-			if (strict) {
+			if (tree.strict) {
 				throw new Error(
 					`Method ${name} was called without being explicitly stubbed`,
 				);
 			}
 
-			returned ??= createProxy(name, strict);
+			returned ??= createProxy(name, tree);
 
 			return returned;
 		});
 	};
 
 	/**
+	 * The one mock function for a function found on a mock's target.
+	 *
+	 * @param instance - Set when the function is a method of a class-instance partial:
+	 *   it then runs as that instance, so `#private` fields work. Otherwise it gets the
+	 *   call-site `this` (the mock).
+	 */
+	const mockFunction = (
+		fn: AnyFunction,
+		tree: MockTree,
+		instance?: object,
+	): AnyFunction => {
+		if (adapter.isMock(fn)) {
+			return fn;
+		}
+
+		let mocked = tree.functions.get(fn);
+
+		if (!mocked) {
+			const implementation = instance
+				? function (this: unknown, ...args: unknown[]): unknown {
+						return Reflect.apply(fn, instance, args);
+					}
+				: fn;
+
+			mocked = adapter.fn(implementation);
+			tree.functions.set(fn, mocked);
+		}
+
+		return mocked;
+	};
+
+	/**
 	 * Creates a Proxy that enables deep mocking with automatic property generation.
 	 *
 	 * @param name - Debug name for the mock (used in error messages)
-	 * @param strict - If true, throws errors when calling unstubbed methods
+	 * @param tree - State shared by the whole mock from one `createMock()` call
 	 * @param base - Optional base object with pre-defined properties/implementations
 	 * @returns A proxied object that auto-generates mocks for any accessed property
 	 */
-	const createProxy = (
-		name: string,
-		strict: boolean,
-		base?: object,
-	): object => {
-		const cache = new Map<string | number | symbol, unknown>();
-		const target: object = base ?? createAutoMockedFunction(name, strict);
+	const createProxy = (name: string, tree: MockTree, base?: object): object => {
+		const target: object = base ?? createAutoMockedFunction(name, tree);
+		// A class-instance partial (not a plain object) runs its methods and getters as itself
+		const instance = base && !isPlainObject(base) ? base : undefined;
+		// Wrappers for the mock library's API methods (auto-mocked functions only)
+		const apiMethods = new Map<string | symbol, unknown>();
+		// Auto-mocks for keys the target doesn't have
+		const autoMocks = new Map<string | symbol, object>();
+		// Keys the user assigned or defined through the mock: returned as they are
+		const assigned = new Set<string | symbol>();
+		// On an auto-mocked function, the mock library's own properties (taken right after
+		// creation, so ones the user adds later aren't included) that aren't in its API are
+		// internals (e.g. Sinon's `get`/`invoke`), not user data: they auto-mock
+		const libraryInternals: ReadonlySet<string | symbol> = base
+			? new Set()
+			: new Set(
+					Reflect.ownKeys(target).filter(
+						(key) => !functionBuiltins.has(key) && !isApiKey(key.toString()),
+					),
+				);
+
+		const forget = (prop: string | symbol) => {
+			autoMocks.delete(prop);
+			assigned.add(prop);
+		};
 
 		const handler: ProxyHandler<object> = {
 			get: (obj, prop, receiver) => {
-				const propName = prop.toString();
+				// Values a proxy may not replace (e.g. on frozen partials) come first: the
+				// engine enforces this for every key, including the special ones below
+				if (mustReturnAsIs(obj, prop)) {
+					return Reflect.get(obj, prop);
+				}
 
 				// Return undefined for special properties to prevent interference:
 				// - 'inspect' & util.inspect.custom: Node.js inspection (console.log)
@@ -141,6 +208,8 @@ export const createMockFactory = <M extends MockKind>(
 					return Reflect.get(obj, prop, receiver);
 				}
 
+				const propName = prop.toString();
+
 				// For auto-mocked functions (no base), allow direct access to the mock
 				// library's API so methods like mockImplementation work correctly
 				if (!base && isApiKey(propName)) {
@@ -150,73 +219,97 @@ export const createMockFactory = <M extends MockKind>(
 						return value;
 					}
 
-					if (!cache.has(prop)) {
+					let method = apiMethods.get(prop);
+
+					if (!method) {
 						// Call the library's method on the underlying mock itself: its internals
 						// (e.g. Sinon's `this.behaviors`) must not go through this proxy and get
 						// auto-mocked. It returns that mock for chaining; return the proxy instead
 						// so chained calls keep auto-mocking, as the types promise.
-						cache.set(prop, (...args: unknown[]) => {
+						method = (...args: unknown[]) => {
 							const result: unknown = Reflect.apply(value, obj, args);
 
 							return result === obj ? proxy : result;
-						});
+						};
+						apiMethods.set(prop, method);
 					}
 
-					return cache.get(prop);
+					return method;
 				}
 
-				// Values a proxy may not replace (e.g. on frozen partials) pass through untouched
-				if (mustReturnAsIs(obj, prop)) {
-					return Reflect.get(obj, prop);
+				// Assigned values, and the basics every function has, are returned as they are
+				if (assigned.has(prop) || (!base && functionBuiltins.has(prop))) {
+					return Reflect.get(obj, prop, receiver);
 				}
 
-				// Return cached value if we've already created a mock for this property
-				// Ensures consistency: accessing mock.foo twice returns the same mock
-				if (cache.has(prop)) {
-					return cache.get(prop);
-				}
+				if (prop in obj && !libraryInternals.has(prop)) {
+					// Read live (getters re-run, outside changes show up). Getters run with the
+					// mock as `this`, so `this.method()` hits the mock, except on class
+					// instances, which run as themselves.
+					const value: unknown = Reflect.get(obj, prop, instance ?? receiver);
 
-				const existing: unknown = Reflect.get(obj, prop);
-				let mockedProp: unknown;
+					if (typeof value === 'function') {
+						return mockFunction(value as AnyFunction, tree, instance);
+					}
 
-				// On an auto-mocked function, the mock library's own properties that aren't in
-				// its API are internals (e.g. Sinon's `get`/`invoke`), not user data: auto-mock
-				// them like missing keys instead of wrapping them as implementations.
-				const isLibraryInternal =
-					!base && Object.hasOwn(obj, prop) && !functionBuiltins.has(prop);
-
-				if (prop in obj && !isLibraryInternal) {
-					if (typeof existing === 'function') {
-						// If it's already a mock (from mock composition), use it as-is
-						// Otherwise wrap it in a mock to track calls
-						mockedProp = adapter.isMock(existing)
-							? existing
-							: adapter.fn(existing as AnyFunction);
-					} else if (isPlainObject(existing) && !mocks.has(existing)) {
+					if (isPlainObject(value) && !mocks.has(value)) {
 						// A nested partial: deep-mock it like the root, so its methods become
 						// mocks and missing keys auto-mock (class instances, arrays, etc. are
-						// left as-is)
-						mockedProp = createProxy(`${name}.${propName}`, strict, existing);
-					} else {
-						mockedProp = existing;
+						// left as-is). One mock per object, so shared and circular references
+						// keep their identity.
+						let nested = tree.objects.get(value);
+
+						if (!nested) {
+							nested = createProxy(`${name}.${propName}`, tree, value);
+							tree.objects.set(value, nested);
+						}
+
+						return nested;
 					}
-				} else {
-					// Property doesn't exist - auto-generate a nested mock
-					// This enables deep access like mock.nested.deeply.whatever
-					mockedProp = createProxy(`${name}.${propName}`, strict);
+
+					return value;
 				}
 
-				// Cache the mocked property for consistent return values
-				cache.set(prop, mockedProp);
+				// Property doesn't exist - auto-generate a nested mock
+				// This enables deep access like mock.nested.deeply.whatever
+				let autoMock = autoMocks.get(prop);
 
-				return mockedProp;
+				if (!autoMock) {
+					autoMock = createProxy(`${name}.${propName}`, tree);
+					autoMocks.set(prop, autoMock);
+				}
+
+				return autoMock;
 			},
-			set: (obj, prop, newValue) => {
-				// Update both the cache and the underlying object
-				// This allows mock properties to be reassigned: mock.foo = 42
-				cache.set(prop, newValue);
+			set: (obj, prop, newValue, receiver) => {
+				// mock.foo = 42 writes to the underlying object; on success the key is
+				// returned as assigned from then on (a failed write changes nothing)
+				const written = Reflect.set(obj, prop, newValue, receiver);
 
-				return Reflect.set(obj, prop, newValue);
+				if (written) {
+					forget(prop);
+				}
+
+				return written;
+			},
+			defineProperty: (obj, prop, descriptor) => {
+				const defined = Reflect.defineProperty(obj, prop, descriptor);
+
+				if (defined) {
+					forget(prop);
+				}
+
+				return defined;
+			},
+			deleteProperty: (obj, prop) => {
+				const deleted = Reflect.deleteProperty(obj, prop);
+
+				if (deleted) {
+					autoMocks.delete(prop);
+					assigned.delete(prop);
+				}
+
+				return deleted;
 			},
 		};
 
@@ -227,8 +320,12 @@ export const createMockFactory = <M extends MockKind>(
 	};
 
 	return ((partial: object = {}, options: MockOptions = {}) => {
-		const { name = 'mock', strict = false } = options;
+		const tree: MockTree = {
+			strict: options.strict ?? false,
+			objects: new WeakMap(),
+			functions: new WeakMap(),
+		};
 
-		return createProxy(name, strict, partial);
+		return createProxy(options.name ?? 'mock', tree, partial);
 	}) as CreateMock<M>;
 };

@@ -381,6 +381,122 @@ describe('Mocks', () => {
 			});
 		});
 
+		describe('identity and live values', () => {
+			it('should give a shared nested object one mock', () => {
+				const shared = { read: () => 1 };
+				const mock = createMock<{
+					a: typeof shared;
+					b: typeof shared;
+				}>({ a: shared, b: shared });
+
+				mock.a.read.mockReturnValue(9);
+
+				expect(mock.a).toBe(mock.b);
+				expect(mock.b.read()).toBe(9);
+			});
+
+			it('should keep circular references stable', () => {
+				interface Node {
+					n: number;
+					self: Node;
+				}
+				const node = { n: 1 } as Node;
+				node.self = node;
+				const mock = createMock<{ node: Node }>({ node });
+
+				expect(mock.node.self).toBe(mock.node);
+				expect(mock.node.self.self).toBe(mock.node);
+			});
+
+			it('should read values live, not from a stale cache', () => {
+				const partial = { value: 1 };
+				const mock = createMock<{ value: number }>(partial);
+
+				expect(mock.value).toBe(1);
+				partial.value = 2;
+				expect(mock.value).toBe(2);
+			});
+
+			it('should not cache a failed write', () => {
+				const partial = Object.defineProperty({}, 'value', {
+					value: 1,
+					writable: false,
+					configurable: true,
+				}) as { value: number };
+				const mock = createMock<{ value: number }>(partial);
+
+				expect(Reflect.set(mock, 'value', 2)).toBe(false);
+				expect(mock.value).toBe(1);
+			});
+
+			it('should reflect deletes', () => {
+				const mock = createMock<{ value?: number }>({ value: 1 });
+
+				delete mock.value;
+
+				expect('value' in mock).toBe(false);
+			});
+
+			it('should run getters with the mock as this', () => {
+				const mock = createMock<{
+					p: { f: () => number; readonly value: number };
+				}>({
+					p: {
+						f: () => 1,
+						get value() {
+							return this.f();
+						},
+					},
+				});
+
+				mock.p.f.mockReturnValue(2);
+
+				expect(mock.p.value).toBe(2);
+			});
+
+			it('should run class-instance methods as the instance (private fields)', () => {
+				class Counter {
+					#count = 1;
+					read() {
+						return this.#count;
+					}
+				}
+				const mock = createMock<Counter>(new Counter());
+
+				expect(mock.read()).toBe(1);
+				expect(mock.read).toHaveBeenCalledTimes(1);
+			});
+
+			it('should keep properties added to auto-mocked values', () => {
+				const value = createMock<{ get: () => { value: number } }>().get();
+
+				Object.defineProperty(value, 'value', {
+					value: 42,
+					configurable: true,
+				});
+
+				expect(value.value).toBe(42);
+			});
+
+			it('should not deep-mock a function prototype', () => {
+				const mock = createMock<{ make: () => void }>();
+				const prototype: unknown = Reflect.get(mock.make, 'prototype');
+
+				// The real prototype object: missing keys aren't auto-mocked
+				expect(Reflect.get(Object(prototype), 'anything')).toBeUndefined();
+			});
+
+			it('should return frozen values as-is, including special keys', () => {
+				const then = () => 1;
+				const mock = createMock<{ then: () => number }>(
+					// oxlint-disable-next-line unicorn/no-thenable -- a real `then` is what this tests
+					Object.freeze({ then }),
+				);
+
+				expect(Reflect.get(mock, 'then')).toBe(then);
+			});
+		});
+
 		it('nested properties should equal its partial', () => {
 			const mock = createMock<Record<string, unknown>>({ foo: { bar: 1 } });
 			expect({ mock }).toEqual({ mock: { foo: { bar: 1 } } });
