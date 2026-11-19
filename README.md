@@ -7,7 +7,7 @@ Type-safe, deeply mocked objects for TypeScript tests. `createMock<T>()` gives y
 | Import              | Mock library                      | Status       |
 | ------------------- | --------------------------------- | ------------ |
 | `deepmocked/vitest` | Vitest (`vi.fn`)                  | ✅ Available |
-| `deepmocked/node`   | `node:test` (`mock.fn`)           | Planned      |
+| `deepmocked/node`   | `node:test` (`mock.fn`)           | ✅ Available |
 | `deepmocked/sinon`  | Sinon (works with Japa, AdonisJS) | Planned      |
 | `deepmocked/jest`   | Jest / `jest-mock`                | Planned      |
 
@@ -41,7 +41,7 @@ yarn add -D deepmocked
 bun add -d deepmocked
 ```
 
-Each adapter uses the mock library you already have installed (`vitest` for `deepmocked/vitest`); none of them are installed for you.
+Each adapter uses the mock library you already have installed (`vitest` for `deepmocked/vitest`); none of them are installed for you. `deepmocked/node` needs nothing beyond Node itself (and `@types/node` for types).
 
 ### Migrating from `vitest-create-mock`
 
@@ -76,6 +76,41 @@ describe('UserController', () => {
 	});
 });
 ```
+
+### With `node:test`
+
+`deepmocked/node` works the same way, with `node:test`'s mocks. Their whole API lives on `fn.mock`, so that's where you stub and inspect them:
+
+```typescript
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+import { createMock } from 'deepmocked/node';
+
+interface UserService {
+	getUser: (id: number) => Promise<{ name: string; email: string }>;
+	deleteUser: (id: number) => Promise<void>;
+}
+
+test('gets a user', async () => {
+	const userService = createMock<UserService>();
+	userService.getUser.mock.mockImplementation(async () => ({
+		name: 'John',
+		email: 'john@example.com',
+	}));
+
+	const user = await userService.getUser(1);
+
+	assert.equal(user.name, 'John');
+	assert.deepEqual(userService.getUser.mock.calls[0]?.arguments, [1]);
+});
+```
+
+- Stub with `fn.mock.mockImplementation()` / `mockImplementationOnce()`; inspect with `fn.mock.calls` and `fn.mock.callCount()`.
+- A stub that returns `undefined` is respected (it isn't replaced by an auto-mock), including in strict mode.
+- Mocks are created on the global `mock` tracker, so `mock.restoreAll()` and `mock.reset()` apply to them; after a restore, unstubbed calls go back to returning auto-mocks.
+
+The rest of this README uses Vitest in its examples.
 
 ## API
 

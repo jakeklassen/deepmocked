@@ -15,7 +15,12 @@
 		"esModuleInterop": true,
 		"isolatedModules": true,
 		"verbatimModuleSyntax": true,
-		"skipLibCheck": true
+		"skipLibCheck": true,
+		// Tests that import the package by name (e.g. src/node.test.ts, which runs under
+		// `node --test` against dist/) type-check against the source instead
+		"paths": {
+			"deepmocked/*": ["./src/*.ts"]
+		}
 	},
 	"include": ["src"]
 }

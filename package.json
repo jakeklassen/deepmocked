@@ -1,12 +1,13 @@
 {
 	"name": "deepmocked",
 	"version": "0.1.0",
-	"description": "Type-safe deep mocks for TypeScript tests. Auto-mocks nested properties and return values, with adapters per mock library (Vitest today).",
+	"description": "Type-safe deep mocks for TypeScript tests. Auto-mocks nested properties and return values, with adapters per mock library (Vitest, node:test).",
 	"keywords": [
 		"auto-mock",
 		"createMock",
 		"deep-mock",
 		"mock",
+		"node:test",
 		"test",
 		"typescript",
 		"vitest"
@@ -30,6 +31,10 @@
 			"types": "./dist/vitest.d.ts",
 			"default": "./dist/vitest.js"
 		},
+		"./node": {
+			"types": "./dist/node.d.ts",
+			"default": "./dist/node.js"
+		},
 		"./package.json": "./package.json"
 	},
 	"publishConfig": {
@@ -43,6 +48,7 @@
 		"format": "oxfmt .",
 		"format:check": "oxfmt --check .",
 		"test": "vitest",
+		"test:node": "tsdown && node --test src/node.test.ts",
 		"typecheck": "tsc --noEmit",
 		"release": "bumpp && npm publish",
 		"prepublishOnly": "pnpm run build"

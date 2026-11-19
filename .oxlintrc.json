@@ -38,6 +38,12 @@
 				"typescript/no-base-to-string": "off",
 				"typescript/unbound-method": "off"
 			}
+		},
+		{
+			"files": ["src/node.test.ts"],
+			"rules": {
+				"typescript/no-floating-promises": "off"
+			}
 		}
 	]
 }

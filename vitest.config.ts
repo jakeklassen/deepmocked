@@ -2,7 +2,12 @@ import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
 	test: {
-		// tmp/ holds throwaway consumer projects with their own vitest copy
-		exclude: [...configDefaults.exclude, 'tmp/**'],
+		exclude: [
+			...configDefaults.exclude,
+			// tmp/ holds throwaway consumer projects with their own vitest copy
+			'tmp/**',
+			// runs under `node --test` instead: pnpm run test:node
+			'src/node.test.ts',
+		],
 	},
 });
