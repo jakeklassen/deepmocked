@@ -429,6 +429,26 @@ describe('Mocks', () => {
 			expect(mock.func.getMockImplementation()).toBe(impl);
 		});
 
+		it('should report assertion failures on mocks instead of throwing a TypeError', () => {
+			const mock = createMock<TestInterface>();
+
+			expect(() => expect(mock.nested).toEqual({ someOtherNum: 1 })).toThrow(
+				/to deeply equal/,
+			);
+			expect(() => expect(mock.func).toBe(5)).toThrow(/to be 5/);
+			expect(() => expect(mock).toBe(5)).toThrow(/to be 5/);
+		});
+
+		it('should not auto-mock Symbol.toStringTag but keep real values', () => {
+			const mock = createMock<TestInterface>();
+			const tagged = createMock<{ [Symbol.toStringTag]: string }>({
+				[Symbol.toStringTag]: 'Tagged',
+			});
+
+			expect(mock.nested[Symbol.toStringTag as never]).toBeUndefined();
+			expect(Object.prototype.toString.call(tagged)).toBe('[object Tagged]');
+		});
+
 		it('should automock promises so that they are awaitable', async () => {
 			type TypeWithPromiseReturningFunctions = {
 				doSomethingAsync: () => Promise<number>;

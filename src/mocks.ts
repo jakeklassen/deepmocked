@@ -216,6 +216,13 @@ const createProxy: {
 				return undefined;
 			}
 
+			// Never auto-mock Symbol.toStringTag: assertion formatters (loupe, pretty-format)
+			// read it and coerce it to a string, which throws on an auto-mocked function and
+			// hides the real assertion failure. Real values (own or user-assigned) still work.
+			if (prop === Symbol.toStringTag) {
+				return Reflect.get(obj, prop, receiver);
+			}
+
 			// For auto-mocked functions (no base), allow direct access to Vitest Mock API properties
 			// This ensures methods like mockImplementation work correctly
 			if (!base && vitestFnProps.has(propName)) {
