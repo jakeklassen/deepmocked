@@ -181,6 +181,11 @@ const vitestFnProps = new Set([
 	'mockThrow',
 	'mockThrowOnce',
 	'withImplementation',
+	// Not part of Vitest's API: vi.fn() has no `calls`, so this resolves to undefined.
+	// That is deliberate. jest's `expect` treats anything with `calls.all()` and
+	// `calls.count()` as a Jasmine spy; without this entry the proxy would auto-mock
+	// `calls` and its matchers would read garbage instead of `mock.calls`.
+	'calls',
 ]);
 
 /**

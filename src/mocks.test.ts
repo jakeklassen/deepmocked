@@ -459,6 +459,24 @@ describe('Mocks', () => {
 			expect(getUser().id).toBe(getUser().id);
 		});
 
+		it('should not look like a Jasmine spy to jest-style expect', () => {
+			// Same duck-typing check jest's `expect` (also used by @japa/expect) runs
+			// to decide between `mock.calls` and Jasmine's `calls.all()`
+			const isJasmineSpy = (received: unknown) => {
+				const calls: unknown = Reflect.get(Object(received), 'calls');
+
+				return (
+					calls != null &&
+					typeof Reflect.get(Object(calls), 'all') === 'function' &&
+					typeof Reflect.get(Object(calls), 'count') === 'function'
+				);
+			};
+			const mock = createMock<TestInterface>();
+
+			expect(isJasmineSpy(mock.func)).toBe(false);
+			expect(isJasmineSpy(mock.nested.func4)).toBe(false);
+		});
+
 		it('should return a stable reference for Mock API methods', () => {
 			const mock = createMock<TestInterface>();
 
