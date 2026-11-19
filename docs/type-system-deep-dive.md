@@ -1,6 +1,6 @@
 # DeepMocked Type System: Design & Research
 
-This document captures the research, exploration, and decisions behind the `DeepMocked` type system in `vitest-create-mock`.
+This document captures the research, exploration, and decisions behind the `DeepMocked` type system in `deepmocked` (originally developed as `vitest-create-mock`). The types now live in [src/core/types.ts](../src/core/types.ts), parameterized by each adapter's mock type; the logic described here is unchanged.
 
 ## Goal
 

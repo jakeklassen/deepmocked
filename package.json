@@ -11,15 +11,15 @@
 		"typescript",
 		"vitest"
 	],
-	"homepage": "https://github.com/jakeklassen/vitest-create-mock#readme",
+	"homepage": "https://github.com/jakeklassen/deepmocked#readme",
 	"bugs": {
-		"url": "https://github.com/jakeklassen/vitest-create-mock/issues"
+		"url": "https://github.com/jakeklassen/deepmocked/issues"
 	},
 	"license": "MIT",
 	"author": "Jake Klassen <jklassendev@gmail.com>",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/jakeklassen/vitest-create-mock.git"
+		"url": "git+https://github.com/jakeklassen/deepmocked.git"
 	},
 	"files": [
 		"dist"
