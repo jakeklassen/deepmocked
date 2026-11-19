@@ -227,6 +227,32 @@ describe('createMock (node:test)', () => {
 			});
 		});
 
+		test('types functions returned from calls as mocks', () => {
+			const factory = createMock<{ make: () => (id: number) => string }>();
+
+			const made = factory.make();
+			made.mock.mockImplementation((id) => id.toFixed());
+
+			assert.equal(made(2), '2');
+			assert.equal(made.mock.callCount(), 1);
+			// Type-level only (never called)
+			// @ts-expect-error wrong argument type
+			const wrongArgument = () => made('wrong');
+			void wrongArgument;
+		});
+
+		test('keeps null on nullable members', () => {
+			const service = createMock<{ read: ((id: number) => string) | null }>({
+				read: null,
+			});
+
+			// Type-level only (never called)
+			// @ts-expect-error read may be null
+			const unsafeRead = () => service.read(1);
+			void unsafeRead;
+			assert.equal(service.read, null);
+		});
+
 		test('rejects partials that are not implementations or mocks', () => {
 			// @ts-expect-error a number is not an implementation
 			createMock<UserService>({ save: 123 });

@@ -646,6 +646,43 @@ describe('Mocks', () => {
 			expectTypeOf(mock.get).parameters.toEqualTypeOf<[id: number]>();
 		});
 
+		it('should type functions returned from calls as mocks', async () => {
+			const mock = createMock<{
+				factory: () => (id: number) => string;
+				load: () => Promise<(id: number) => string>;
+			}>();
+
+			const made = mock.factory();
+			made.mockReturnValue('made');
+			const loaded = await mock.load();
+			loaded.mockReturnValue('loaded');
+
+			expect(made(1)).toBe('made');
+			expect(loaded(1)).toBe('loaded');
+			expectTypeOf(made).parameters.toEqualTypeOf<[id: number]>();
+			expectTypeOf(made).toExtend<Mock>();
+			// @ts-expect-error wrong argument type
+			made('wrong');
+		});
+
+		it('should keep null on nullable members', () => {
+			const mock = createMock<{
+				read: ((id: number) => string) | null;
+				config: { port: number } | null;
+			}>({ read: null, config: null });
+
+			// Type-level only (never called): both may be null
+			// @ts-expect-error read may be null
+			const unsafeRead = () => mock.read(1);
+			// @ts-expect-error config may be null
+			const unsafePort = () => mock.config.port;
+			void [unsafeRead, unsafePort];
+
+			expect(mock.read?.(1)).toBeUndefined();
+			expect(mock.config?.port).toBeUndefined();
+			expectTypeOf(mock.read).toExtend<Mock | null>();
+		});
+
 		it('should reject partials that are not implementations or mocks', () => {
 			interface Reader {
 				read: (id: number) => string;

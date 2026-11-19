@@ -73,6 +73,12 @@ export type PartialFuncReturn<T, M extends MockKind> = {
 // oxlint-disable-next-line typescript/no-empty-object-type -- {} intentionally used to detect unknown type
 type IsUnknown<T> = unknown extends T ? (T extends {} ? false : true) : false;
 
+/** Detects `any`: only `any` makes `1 & T` something `0` is assignable to. */
+type IsAny<T> = 0 extends 1 & T ? true : false;
+
+/** The `null` and `undefined` members of `T`, kept on mocked members so narrowing stays required. */
+type Nullish<T> = Extract<T, null | undefined>;
+
 /**
  * Tuple type used to track recursion depth in DeepMocked.
  * Each level decrements by removing an element from the tuple.
@@ -113,8 +119,23 @@ type MockedFunctionWithDepth<
 	: // At higher depths: use full typing for good DX
 		((
 			...args: Parameters<T>
-		) => DeepMockedWithDepth<ReturnType<T>, DecrementDepth<D>, M>) &
+		) => DeepMockedValue<ReturnType<T>, DecrementDepth<D>, M>) &
 			MockOf<M, T>;
+
+/**
+ * A value produced by calling (or awaiting) a mocked function. Unlike a property
+ * value, it can itself be a function: an unstubbed call returns an auto-mocked
+ * function, so a returned function type is mocked rather than mapped to `{}`.
+ */
+type DeepMockedValue<T, D extends number[], M extends MockKind> =
+	IsAny<T> extends true
+		? T
+		: D extends []
+			? // oxlint-disable-next-line typescript/no-explicit-any -- fallback for exhausted depth
+				any
+			: T extends AnyFunction
+				? MockedFunctionWithDepth<T, D, M>
+				: DeepMockedWithDepth<T, D, M>;
 
 /**
  * Properties that should be excluded from mocking to prevent interference
@@ -141,7 +162,7 @@ type DeepMockedWithDepth<
 		any
 	: // Handle Promise specially - don't mock the Promise, mock its resolved value
 		T extends Promise<infer U>
-		? Promise<DeepMockedWithDepth<U, DecrementDepth<D>, M>>
+		? Promise<DeepMockedValue<U, DecrementDepth<D>, M>>
 		: {
 				[
 					K in keyof T as K extends ExcludedMockProperties ? never : K
@@ -149,14 +170,10 @@ type DeepMockedWithDepth<
 					? // oxlint-disable-next-line typescript/no-explicit-any -- unknown types become any for proxy support
 						any
 					: NonNullable<T[K]> extends AnyFunction
-						? undefined extends T[K]
-							? MockedFunctionWithDepth<NonNullable<T[K]>, D, M> | undefined
-							: MockedFunctionWithDepth<NonNullable<T[K]>, D, M>
+						? MockedFunctionWithDepth<NonNullable<T[K]>, D, M> | Nullish<T[K]>
 						: NonNullable<T[K]> extends object
-							? undefined extends T[K]
-								? | DeepMockedWithDepth<NonNullable<T[K]>, DecrementDepth<D>, M>
-									| undefined
-								: DeepMockedWithDepth<T[K], DecrementDepth<D>, M>
+							? | DeepMockedWithDepth<NonNullable<T[K]>, DecrementDepth<D>, M>
+								| Nullish<T[K]>
 							: T[K];
 			};
 
@@ -172,12 +189,13 @@ type DeepMockedWithDepth<
  * 2. Functions:
  *    - Typed as the library's mock type, so its Mock API is available
  *    - Return types are recursively DeepMocked (up to depth limit)
- *    - Optional functions preserve their optionality (union with undefined)
+ *    - Optional and nullable functions keep `undefined`/`null`, so narrowing stays required
+ *    - Functions returned from calls are mocked functions too
  *    - Example: `mock.getUser()` returns DeepMocked<User> with all Mock methods
  *
  * 3. Objects:
  *    - Recursively transformed to DeepMocked (up to depth limit)
- *    - Optional objects preserve their optionality
+ *    - Optional and nullable objects keep `undefined`/`null`
  *    - Example: `mock.nested.property` is also deeply mocked
  *
  * 4. Primitives (string, number, boolean, etc.):
