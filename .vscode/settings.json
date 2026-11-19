@@ -6,5 +6,6 @@
   "editor.codeActionsOnSave": {
     "source.fixAll.oxc": "always"
   },
-  "oxc.fmt.configPath": ".oxfmtrc.json"
+  "oxc.fmt.configPath": ".oxfmtrc.json",
+  "js/ts.tsdk.path": "node_modules/typescript"
 }
