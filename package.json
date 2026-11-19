@@ -1,10 +1,14 @@
 {
-	"name": "vitest-create-mock",
-	"version": "0.0.12",
-	"description": "A utility library for creating mocks in Vitest tests.",
+	"name": "deepmocked",
+	"version": "0.0.0",
+	"description": "Type-safe deep mocks for TypeScript tests. Auto-mocks nested properties and return values, with adapters per mock library (Vitest today).",
 	"keywords": [
+		"auto-mock",
+		"createMock",
+		"deep-mock",
 		"mock",
 		"test",
+		"typescript",
 		"vitest"
 	],
 	"homepage": "https://github.com/jakeklassen/vitest-create-mock#readme",
@@ -21,11 +25,11 @@
 		"dist"
 	],
 	"type": "module",
-	"main": "./dist/index.js",
-	"module": "./dist/index.js",
-	"types": "./dist/index.d.ts",
 	"exports": {
-		".": "./dist/index.js",
+		"./vitest": {
+			"types": "./dist/vitest.d.ts",
+			"default": "./dist/vitest.js"
+		},
 		"./package.json": "./package.json"
 	},
 	"publishConfig": {
@@ -40,7 +44,8 @@
 		"format:check": "oxfmt --check .",
 		"test": "vitest",
 		"typecheck": "tsc --noEmit",
-		"release": "bumpp && npm publish"
+		"release": "bumpp && npm publish",
+		"prepublishOnly": "pnpm run build"
 	},
 	"devDependencies": {
 		"@types/node": "^26.6.6",
@@ -56,6 +61,11 @@
 	},
 	"peerDependencies": {
 		"vitest": "^3 || ^4 || ^5"
+	},
+	"peerDependenciesMeta": {
+		"vitest": {
+			"optional": true
+		}
 	},
 	"packageManager": "pnpm@12.22.0"
 }

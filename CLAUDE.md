@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is **Vitest Toolbox**, a port of [@golevelup/ts-jest](https://github.com/golevelup/nestjs/tree/master/packages/testing/ts-jest), specifically providing a counterpart of `createMock` for Vitest.
+**deepmocked** provides `createMock<T>()`: type-safe deep mocks for TypeScript tests, originally a port of [@golevelup/ts-jest](https://github.com/golevelup/nestjs/tree/master/packages/testing/ts-jest). It was previously published as `vitest-create-mock`.
+
+It is a mock-library-agnostic core plus one adapter per mock library, each exposed as a subpath export (`deepmocked/vitest`; `node`, `sinon` and `jest` adapters are planned).
 
 ## Package Manager
 
@@ -14,40 +16,38 @@ This project uses **pnpm** (not npm or yarn). Always use `pnpm` commands.
 
 ### Development
 
-- `pnpm run dev` - Watch mode for development (runs tsdown with --watch)
+- `pnpm run dev` - Rebuild on file changes (tsdown --watch)
 - `pnpm run build` - Build the library using tsdown
 - `pnpm run typecheck` - Type check without emitting files
 
 ### Testing
 
 - `pnpm run test` - Run all tests with Vitest
-- `pnpm run test -- path/to/test.test.ts` - Run a single test file
+- `pnpm run test -- path/to/file.test.ts` - Run a single test file
 
 ### Release
 
-- `pnpm run release` - Bump version and publish to npm
+- `pnpm run release` - Bump version and publish to npm. The user runs this themselves.
 
 ## Architecture
 
-### Build System
-
-The project uses **tsdown** (not tsc or other bundlers) for building. Configuration is in [tsdown.config.ts](tsdown.config.ts):
-
-- Entry point: [src/index.ts](src/index.ts)
-- Platform: neutral
-- Outputs to `dist/` with TypeScript declarations
-
 ### Source Structure
 
-- Source code: [src/](src/) directory
-- Tests: [tests/](tests/) directory (`.test.ts` extension)
-- Single entry point at [src/index.ts](src/index.ts)
+- [src/core/types.ts](src/core/types.ts) - `DeepMocked<T, M>`, `PartialFuncReturn<T, M>`, `MockOptions`. Written once and parameterized by a `MockKind` (`M`), which each adapter extends to supply its library's mock type (TypeScript has no higher-kinded types, so `MockOf<M, F>` looks up `(M & { fn: F })['mock']`).
+- [src/core/create-mock.ts](src/core/create-mock.ts) - The proxy engine and `createMockFactory(adapter)`. Imports no mock library. A `MockAdapter` supplies `fn`, `isMock`, `hasImplementation` and `apiKeys` (the library's Mock API, passed through instead of auto-mocked).
+- [src/vitest.ts](src/vitest.ts) - The Vitest adapter and the `deepmocked/vitest` entry. It must import `vi` from `vitest` itself (not a separate `@vitest/spy`) so `vi.clearAllMocks()` and Vitest's `clearMocks` option reach these mocks.
+- Tests live next to the source as `*.test.ts` (e.g. [src/vitest.test.ts](src/vitest.test.ts)).
+
+Adding an adapter: create `src/<lib>.ts`, add it to `entry` in [tsdown.config.ts](tsdown.config.ts) and to `exports` in package.json, and add the library as an optional peer dependency.
+
+### Build System
+
+**tsdown** (not tsc or other bundlers), configured in [tsdown.config.ts](tsdown.config.ts): one entry per adapter, platform neutral, mock libraries never bundled. Declarations are generated with oxc because `isolatedDeclarations` is on, so exported values need explicit types.
 
 ### TypeScript Configuration
 
-Uses strict TypeScript with:
+TypeScript 7 (native `tsc`), strict, `module: preserve` with bundler resolution, `noUnusedLocals`, `isolatedDeclarations`.
 
-- Target: esnext, lib: es2023
-- Module: preserve (bundler resolution)
-- Strict mode enabled with noUnusedLocals
-- Declaration files emitted via tsconfig, bundling via tsdown
+### Scratch Work
+
+Put throwaway files and trial projects in `tmp/` (gitignored, and excluded from Vitest), never in the system `/tmp`.

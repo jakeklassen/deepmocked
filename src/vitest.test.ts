@@ -1,7 +1,7 @@
 import type { Mock } from 'vitest';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 
-import { createMock } from './mocks';
+import { createMock } from './vitest';
 
 interface TestInterface {
 	someNum: number;

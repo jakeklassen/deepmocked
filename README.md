@@ -1,6 +1,17 @@
-# vitest-create-mock
+# deepmocked
 
-A utility library for creating type-safe, deeply mocked objects in [Vitest](https://vitest.dev/) tests. This is a port of [@golevelup/ts-jest](https://github.com/golevelup/nestjs/tree/master/packages/testing/ts-jest)'s `createMock` functionality, specifically designed for Vitest.
+Type-safe, deeply mocked objects for TypeScript tests. `createMock<T>()` gives you a `T` where every method is a mock and every nested property and return value is mocked automatically.
+
+`deepmocked` has a mock-library-agnostic core with one adapter per mock library, imported by path:
+
+| Import              | Mock library                      | Status       |
+| ------------------- | --------------------------------- | ------------ |
+| `deepmocked/vitest` | Vitest (`vi.fn`)                  | ✅ Available |
+| `deepmocked/node`   | `node:test` (`mock.fn`)           | Planned      |
+| `deepmocked/sinon`  | Sinon (works with Japa, AdonisJS) | Planned      |
+| `deepmocked/jest`   | Jest / `jest-mock`                | Planned      |
+
+It started as a port of [@golevelup/ts-jest](https://github.com/golevelup/nestjs/tree/master/packages/testing/ts-jest)'s `createMock`, and was previously published as [`vitest-create-mock`](https://www.npmjs.com/package/vitest-create-mock).
 
 ## Features
 
@@ -15,26 +26,37 @@ A utility library for creating type-safe, deeply mocked objects in [Vitest](http
 ## Installation
 
 ```bash
-pnpm add -D vitest-create-mock
+pnpm add -D deepmocked
 ```
 
 ```bash
-npm install --save-dev vitest-create-mock
+npm install --save-dev deepmocked
 ```
 
 ```bash
-yarn add -D vitest-create-mock
+yarn add -D deepmocked
 ```
 
 ```bash
-bun add -d vitest-create-mock
+bun add -d deepmocked
+```
+
+Each adapter uses the mock library you already have installed (`vitest` for `deepmocked/vitest`); none of them are installed for you.
+
+### Migrating from `vitest-create-mock`
+
+The API is the same. Change the package and the import path:
+
+```diff
+- import { createMock } from 'vitest-create-mock';
++ import { createMock } from 'deepmocked/vitest';
 ```
 
 ## Quick Start
 
 ```typescript
+import { createMock } from 'deepmocked/vitest';
 import { describe, expect, it } from 'vitest';
-import { createMock } from 'vitest-create-mock';
 
 interface UserService {
 	getUser: (id: number) => Promise<{ name: string; email: string }>;
@@ -310,25 +332,27 @@ const service = {
 } as unknown as MyService;
 ```
 
-**With vitest-create-mock:**
+**With deepmocked:**
 
 ```typescript
 const service = createMock<MyService>();
 ```
 
-The API is intentionally identical to make migration seamless.
+The API is intentionally identical to `@golevelup/ts-jest` to make migration seamless.
 
 ## How It Works
 
-`vitest-create-mock` uses JavaScript Proxies to:
+`deepmocked` uses JavaScript Proxies to:
 
 1. Intercept property access on the mocked object
-2. Return Vitest mocks (`vi.fn()`) for methods
+2. Return mock functions from your mock library for methods
 3. Recursively create nested proxies for deep mocking
 4. Cache created mocks for consistent behavior
 5. Allow property assignment and mock configuration
 
-This approach provides a powerful, flexible mocking solution with minimal boilerplate.
+The proxy engine is shared. Each adapter only tells it how to create and recognize its library's mock functions and which of their methods to pass through, and types every mocked function as that library's mock type (`Mock<T>` for Vitest).
+
+The Vitest adapter creates mocks with `vi` from the `vitest` package itself, so `vi.clearAllMocks()`, `vi.resetAllMocks()` and Vitest's `clearMocks` option apply to them like any other `vi.fn()`.
 
 ## TypeScript Support
 
@@ -355,7 +379,7 @@ pnpm install
 # Run tests
 pnpm test
 
-# Run tests in watch mode
+# Rebuild the library on file changes
 pnpm run dev
 
 # Build the library
@@ -375,9 +399,10 @@ MIT © [Jake Klassen](https://github.com/jakeklassen)
 
 ## Credits
 
-This library is a port of the excellent [`@golevelup/ts-jest`](https://github.com/golevelup/nestjs/tree/master/packages/testing/ts-jest) library for Vitest. Thanks to the original authors for their work!
+This library started as a port of the excellent [`@golevelup/ts-jest`](https://github.com/golevelup/nestjs/tree/master/packages/testing/ts-jest) library. Thanks to the original authors for their work!
 
 ## Related Projects
 
 - [Vitest](https://vitest.dev/) - Next generation testing framework
 - [@golevelup/ts-jest](https://github.com/golevelup/nestjs/tree/master/packages/testing/ts-jest) - The original Jest version
+- [@golevelup/ts-vitest](https://github.com/golevelup/nestjs/tree/master/packages/testing/ts-vitest) - golevelup's own Vitest version
