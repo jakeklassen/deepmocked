@@ -33,3 +33,6 @@ jobs:
 
       - name: Test (node:test adapter)
         run: node --test src/node.test.ts
+
+      - name: Check packed package as a consumer
+        run: pnpm run check:package

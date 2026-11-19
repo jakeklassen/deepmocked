@@ -49,9 +49,10 @@
 		"format:check": "oxfmt --check .",
 		"test": "vitest",
 		"test:node": "tsdown && node --test src/node.test.ts",
+		"check:package": "node scripts/check-package.mjs",
 		"typecheck": "tsc --noEmit",
 		"release": "bumpp && npm publish",
-		"prepublishOnly": "pnpm run build"
+		"prepack": "pnpm run build"
 	},
 	"devDependencies": {
 		"@types/node": "^26.6.6",
