@@ -1,6 +1,6 @@
 {
 	"name": "deepmocked",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Type-safe deep mocks for TypeScript tests. Auto-mocks nested properties and return values, with adapters per mock library (Vitest, node:test).",
 	"keywords": [
 		"auto-mock",
