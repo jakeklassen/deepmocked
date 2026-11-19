@@ -51,6 +51,9 @@ const apiKeys: ReadonlySet<string> = new Set([
 	'mockThrow',
 	'mockThrowOnce',
 	'withImplementation',
+	// Own properties Vitest relies on: vi.isMockFunction() and `using` disposal
+	'_isMockFunction',
+	'Symbol(Symbol.dispose)',
 ]);
 
 // Mocks must come from the `vitest` package itself (not a separate copy of

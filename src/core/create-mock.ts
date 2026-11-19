@@ -34,6 +34,13 @@ const coreApiKeys: ReadonlySet<string> = new Set(['calls']);
 /** `util.inspect.custom` from Node, looked up without importing `node:util`. */
 const inspectCustom = Symbol.for('nodejs.util.inspect.custom');
 
+/** Own properties every function has; on an auto-mocked function they keep their real values. */
+const functionBuiltins: ReadonlySet<string | symbol> = new Set([
+	'length',
+	'name',
+	'prototype',
+]);
+
 /** Every proxy created by any adapter, so existing mocks are never wrapped again. */
 const mocks = new WeakSet<object>();
 
@@ -144,10 +151,12 @@ export const createMockFactory = <M extends MockKind>(
 					}
 
 					if (!cache.has(prop)) {
-						// Mock API methods return the underlying mock for chaining. Return the
-						// proxy instead so chained calls keep auto-mocking, as the types promise.
-						cache.set(prop, function (this: unknown, ...args: unknown[]) {
-							const result: unknown = Reflect.apply(value, this, args);
+						// Call the library's method on the underlying mock itself: its internals
+						// (e.g. Sinon's `this.behaviors`) must not go through this proxy and get
+						// auto-mocked. It returns that mock for chaining; return the proxy instead
+						// so chained calls keep auto-mocking, as the types promise.
+						cache.set(prop, (...args: unknown[]) => {
+							const result: unknown = Reflect.apply(value, obj, args);
 
 							return result === obj ? proxy : result;
 						});
@@ -170,7 +179,13 @@ export const createMockFactory = <M extends MockKind>(
 				const existing: unknown = Reflect.get(obj, prop);
 				let mockedProp: unknown;
 
-				if (prop in obj) {
+				// On an auto-mocked function, the mock library's own properties that aren't in
+				// its API are internals (e.g. Sinon's `get`/`invoke`), not user data: auto-mock
+				// them like missing keys instead of wrapping them as implementations.
+				const isLibraryInternal =
+					!base && Object.hasOwn(obj, prop) && !functionBuiltins.has(prop);
+
+				if (prop in obj && !isLibraryInternal) {
 					if (typeof existing === 'function') {
 						// If it's already a mock (from mock composition), use it as-is
 						// Otherwise wrap it in a mock to track calls
