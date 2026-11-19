@@ -181,7 +181,6 @@ const vitestFnProps = new Set([
 	'mockThrow',
 	'mockThrowOnce',
 	'withImplementation',
-	'calls',
 ]);
 
 /**
