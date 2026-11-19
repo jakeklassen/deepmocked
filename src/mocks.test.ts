@@ -389,6 +389,46 @@ describe('Mocks', () => {
 			expect(httpArgsHost.getRequest).toHaveBeenCalledTimes(1);
 		});
 
+		it('should expose the full Vitest Mock API on automocked functions without wrapping it', () => {
+			const mock = createMock<TestInterface>();
+			// Derive the API from a real vi.fn() so new Vitest methods fail this
+			// test instead of silently being wrapped in another vi.fn().
+			const mockApi = Object.keys(vi.fn()).filter(
+				(key) => typeof Reflect.get(vi.fn(), key) === 'function',
+			);
+
+			expect(mockApi.length).toBeGreaterThan(0);
+
+			for (const key of mockApi) {
+				expect(
+					vi.isMockFunction(Reflect.get(mock.func, key)),
+					`${key} should not be wrapped`,
+				).toBe(false);
+			}
+		});
+
+		it('should support mockThrow and mockThrowOnce on automocked functions', () => {
+			const mock = createMock<TestInterface>();
+
+			mock.func.mockThrow(new Error('always'));
+			expect(() => mock.func(1, 'a')).toThrow('always');
+			expect(() => mock.func(2, 'b')).toThrow('always');
+
+			mock.nested.func4.mockThrowOnce(new Error('once'));
+			mock.nested.func4.mockReturnValue(true);
+			expect(() => mock.nested.func4()).toThrow('once');
+			expect(mock.nested.func4()).toBe(true);
+		});
+
+		it('should return the real implementation from getMockImplementation', () => {
+			const mock = createMock<TestInterface>();
+			const impl = () => true;
+
+			mock.func.mockImplementation(impl);
+
+			expect(mock.func.getMockImplementation()).toBe(impl);
+		});
+
 		it('should automock promises so that they are awaitable', async () => {
 			type TypeWithPromiseReturningFunctions = {
 				doSomethingAsync: () => Promise<number>;

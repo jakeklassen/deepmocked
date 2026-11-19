@@ -161,6 +161,7 @@ export type DeepMocked<T> = DeepMockedWithDepth<T, DefaultDepth>;
  * This prevents our proxy from intercepting these special properties.
  */
 const vitestFnProps = new Set([
+	'getMockImplementation',
 	'getMockName',
 	'mock',
 	'mockClear',
@@ -176,6 +177,9 @@ const vitestFnProps = new Set([
 	'mockReturnThis',
 	'mockReturnValue',
 	'mockReturnValueOnce',
+	// Added in Vitest 4.1
+	'mockThrow',
+	'mockThrowOnce',
 	'withImplementation',
 	'calls',
 ]);
