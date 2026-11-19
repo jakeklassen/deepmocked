@@ -41,35 +41,14 @@ export type PartialFuncReturn<T> = CorePartialFuncReturn<T, NodeMockKind>;
  */
 const apiKeys: ReadonlySet<string> = new Set(['mock']);
 
-/**
- * `node:test` has no way to ask a mock whether the user set an implementation. So
- * auto-mocked functions start with a sentinel implementation that records when it
- * runs: if it ran, the call wasn't stubbed. `mockImplementation()` replaces it, and
- * `restore()`, `mock.restoreAll()` and `mock.reset()` bring it back, so auto-mocking
- * resumes after a restore.
- */
-const unstubbedCalls = new WeakMap<AnyFunction, { ran: boolean }>();
-
 const nodeAdapter: MockAdapter = {
-	fn: (implementation) => {
-		if (implementation) {
-			// mock.fn() proxies the function it is given and answers `.mock` itself, which
-			// breaks on functions that already have a non-configurable `mock` (a Vitest mock,
-			// for one). A fresh wrapper avoids handing it the user's function.
-			return mock.fn(function (this: unknown, ...args: unknown[]): unknown {
-				return Reflect.apply(implementation, this, args);
-			});
-		}
-
-		const state = { ran: false };
-		const fn = mock.fn(function unstubbed() {
-			state.ran = true;
-		});
-
-		unstubbedCalls.set(fn, state);
-
-		return fn;
-	},
+	// mock.fn() proxies the function it is given and answers `.mock` itself, which breaks
+	// on functions that already have a non-configurable `mock` (a Vitest mock, for one).
+	// A fresh wrapper avoids handing it the user's function.
+	fn: (implementation) =>
+		mock.fn(function (this: unknown, ...args: unknown[]): unknown {
+			return Reflect.apply(implementation, this, args);
+		}),
 	isMock: (value) => {
 		if (typeof value !== 'function') {
 			return false;
@@ -83,19 +62,6 @@ const nodeAdapter: MockAdapter = {
 			typeof Reflect.get(context, 'callCount') === 'function' &&
 			typeof Reflect.get(context, 'mockImplementation') === 'function'
 		);
-	},
-	invoke: (fn, thisArg, args) => {
-		const state = unstubbedCalls.get(fn);
-
-		if (!state) {
-			return { result: Reflect.apply(fn, thisArg, args), stubbed: true };
-		}
-
-		// Reset first: the sentinel can also run outside this call path (e.g. `new fn()`)
-		state.ran = false;
-		const result: unknown = Reflect.apply(fn, thisArg, args);
-
-		return { result, stubbed: !state.ran };
 	},
 	apiKeys,
 };

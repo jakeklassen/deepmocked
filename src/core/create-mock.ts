@@ -6,25 +6,14 @@ import type { AnyFunction, CreateMock, MockKind, MockOptions } from './types';
  */
 export interface MockAdapter {
 	/**
-	 * Create a mock function, optionally wrapping an implementation. Called without one
-	 * for auto-mocked functions.
+	 * Create a mock function with a default implementation. For auto-mocked functions
+	 * the core passes one that returns a nested auto-mock (or throws in strict mode), so
+	 * the library records what callers actually receive. Stubs the user configures
+	 * replace it, and resetting/restoring the mock brings it back.
 	 */
-	fn: (implementation?: AnyFunction) => AnyFunction;
+	fn: (implementation: AnyFunction) => AnyFunction;
 	/** Whether a value is already a mock function from this library. */
 	isMock: (value: unknown) => boolean;
-	/**
-	 * Calls an auto-mocked function and reports whether the call was handled by behavior
-	 * the user configured. When it wasn't, the core returns a nested auto-mock instead (or
-	 * throws in strict mode).
-	 *
-	 * The adapter owns the whole call so it can inspect the mock both before it runs
-	 * (one-off stubs are consumed by the call) and after.
-	 */
-	invoke: (
-		mock: AnyFunction,
-		thisArg: unknown,
-		args: unknown[],
-	) => { result: unknown; stubbed: boolean };
 	/**
 	 * The library's own API on a mock function (`mockReturnValue`, `mock`, ...). These are
 	 * passed straight to the underlying mock instead of being auto-mocked.
@@ -45,6 +34,35 @@ const coreApiKeys: ReadonlySet<string> = new Set(['calls']);
 /** `util.inspect.custom` from Node, looked up without importing `node:util`. */
 const inspectCustom = Symbol.for('nodejs.util.inspect.custom');
 
+/** Every proxy created by any adapter, so existing mocks are never wrapped again. */
+const mocks = new WeakSet<object>();
+
+/** Objects created with `{}` or `Object.create(null)`: the ones nested partials deep-mock. */
+const isPlainObject = (value: unknown): value is object => {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const prototype: unknown = Object.getPrototypeOf(value);
+
+	return prototype === Object.prototype || prototype === null;
+};
+
+/**
+ * A proxy's get trap must return the exact value of a non-configurable, read-only
+ * property (e.g. on a frozen object), so those can't be wrapped.
+ */
+const mustReturnAsIs = (obj: object, prop: string | symbol): boolean => {
+	const descriptor = Reflect.getOwnPropertyDescriptor(obj, prop);
+
+	return (
+		descriptor !== undefined &&
+		!descriptor.configurable &&
+		'value' in descriptor &&
+		!descriptor.writable
+	);
+};
+
 /**
  * Builds a `createMock` function for a mock library.
  *
@@ -55,6 +73,26 @@ export const createMockFactory = <M extends MockKind>(
 ): CreateMock<M> => {
 	const isApiKey = (key: string) =>
 		adapter.apiKeys.has(key) || coreApiKeys.has(key);
+
+	/**
+	 * An auto-mocked function: its default implementation returns the same nested
+	 * auto-mock on every call, or throws in strict mode.
+	 */
+	const createAutoMockedFunction = (name: string, strict: boolean): object => {
+		let returned: object | undefined;
+
+		return adapter.fn(function unstubbed(): unknown {
+			if (strict) {
+				throw new Error(
+					`Method ${name} was called without being explicitly stubbed`,
+				);
+			}
+
+			returned ??= createProxy(name, strict);
+
+			return returned;
+		});
+	};
 
 	/**
 	 * Creates a Proxy that enables deep mocking with automatic property generation.
@@ -70,7 +108,7 @@ export const createMockFactory = <M extends MockKind>(
 		base?: object,
 	): object => {
 		const cache = new Map<string | number | symbol, unknown>();
-		const target: object = base ?? adapter.fn();
+		const target: object = base ?? createAutoMockedFunction(name, strict);
 
 		const handler: ProxyHandler<object> = {
 			get: (obj, prop, receiver) => {
@@ -118,6 +156,11 @@ export const createMockFactory = <M extends MockKind>(
 					return cache.get(prop);
 				}
 
+				// Values a proxy may not replace (e.g. on frozen partials) pass through untouched
+				if (mustReturnAsIs(obj, prop)) {
+					return Reflect.get(obj, prop);
+				}
+
 				// Return cached value if we've already created a mock for this property
 				// Ensures consistency: accessing mock.foo twice returns the same mock
 				if (cache.has(prop)) {
@@ -128,16 +171,18 @@ export const createMockFactory = <M extends MockKind>(
 				let mockedProp: unknown;
 
 				if (prop in obj) {
-					// Property exists in the base object
-					// Check for functions - don't double-wrap already mocked functions
 					if (typeof existing === 'function') {
 						// If it's already a mock (from mock composition), use it as-is
 						// Otherwise wrap it in a mock to track calls
 						mockedProp = adapter.isMock(existing)
 							? existing
 							: adapter.fn(existing as AnyFunction);
+					} else if (isPlainObject(existing) && !mocks.has(existing)) {
+						// A nested partial: deep-mock it like the root, so its methods become
+						// mocks and missing keys auto-mock (class instances, arrays, etc. are
+						// left as-is)
+						mockedProp = createProxy(`${name}.${propName}`, strict, existing);
 					} else {
-						// Non-function property, use the value directly
 						mockedProp = existing;
 					}
 				} else {
@@ -160,38 +205,8 @@ export const createMockFactory = <M extends MockKind>(
 			},
 		};
 
-		// For auto-mocked functions (no base), add apply trap to handle function calls
-		if (!base) {
-			handler.apply = (fnTarget, thisArg, argsArray) => {
-				const { result, stubbed } = adapter.invoke(
-					fnTarget as AnyFunction,
-					thisArg,
-					argsArray,
-				);
-
-				// If the user stubbed this call, use its result as-is
-				if (stubbed) {
-					return result;
-				}
-
-				// Strict mode: throw error if function is called without being stubbed
-				if (strict) {
-					throw new Error(
-						`Method ${name} was called without being explicitly stubbed`,
-					);
-				}
-
-				// Auto-generate a mock for the return value
-				// Cache it so repeated calls return the same mock object
-				if (!cache.has('__apply')) {
-					cache.set('__apply', createProxy(name, strict));
-				}
-
-				return cache.get('__apply');
-			};
-		}
-
 		const proxy = new Proxy(target, handler);
+		mocks.add(proxy);
 
 		return proxy;
 	};

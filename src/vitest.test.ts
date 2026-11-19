@@ -325,6 +325,62 @@ describe('Mocks', () => {
 			expect(mock.nested.toString()).toEqual('function () { [native code] }');
 		});
 
+		describe('nested partials', () => {
+			interface Service {
+				repo: { find: (id: number) => number; save: (id: number) => void };
+				items: number[];
+				when: Date;
+			}
+
+			it('should mock nested methods and keep their implementation', () => {
+				const mock = createMock<Service>({ repo: { find: (id) => id * 2 } });
+
+				expect(mock.repo.find(2)).toBe(4);
+				expect(mock.repo.find).toHaveBeenCalledWith(2);
+
+				mock.repo.find.mockReturnValueOnce(9);
+				expect(mock.repo.find(2)).toBe(9);
+			});
+
+			it('should auto-mock keys missing from nested partials', () => {
+				const mock = createMock<Service>({ repo: { find: () => 1 } });
+
+				mock.repo.save(1);
+
+				expect(mock.repo.save).toHaveBeenCalledWith(1);
+				expect(mock.repo).toBe(mock.repo);
+			});
+
+			it('should keep existing mocks, class instances and arrays as-is', () => {
+				const repo = createMock<Service['repo']>();
+				const items = [1, 2];
+				const when = new Date(0);
+				const mock = createMock<Service>({ repo, items, when });
+
+				expect(mock.repo).toBe(repo);
+				expect(mock.items).toBe(items);
+				expect(mock.when).toBe(when);
+			});
+
+			it('should use frozen values as-is and still auto-mock missing keys', () => {
+				// A proxy must return a frozen object's own values unchanged
+				const repo = Object.freeze({ find: () => 1 });
+				const mock = createMock<{ repo: typeof repo; log: () => void }>(
+					Object.freeze({ repo }),
+				);
+
+				expect(mock.repo).toBe(repo);
+				expect(mock.repo.find()).toBe(1);
+				expect(vi.isMockFunction(mock.log)).toBe(true);
+
+				// Reading a frozen method used to throw a proxy invariant TypeError
+				const frozenMethod = createMock<{ read: () => number }>(
+					Object.freeze({ read: () => 2 }),
+				);
+				expect(frozenMethod.read()).toBe(2);
+			});
+		});
+
 		it('nested properties should equal its partial', () => {
 			const mock = createMock<Record<string, unknown>>({ foo: { bar: 1 } });
 			expect({ mock }).toEqual({ mock: { foo: { bar: 1 } } });
@@ -515,6 +571,33 @@ describe('Mocks', () => {
 			expect(mock.find()).toBeUndefined();
 			// once both are used up, unstubbed calls auto-mock again
 			expect(mock.find()).toBeDefined();
+		});
+
+		it('should record the auto-mock an unstubbed call returns', () => {
+			const mock = createMock<{ getRepo: () => { find: () => number } }>();
+
+			const repo = mock.getRepo();
+
+			expect(mock.getRepo).toHaveReturnedWith(repo);
+			expect(mock.getRepo.mock.results[0]?.value).toBe(repo);
+			expect(mock.getRepo()).toBe(repo);
+		});
+
+		it('should record strict-mode throws as throws', () => {
+			const mock = createMock<{ getRepo: () => number }>({}, { strict: true });
+
+			expect(() => mock.getRepo()).toThrow('without being explicitly stubbed');
+			expect(mock.getRepo.mock.results[0]?.type).toBe('throw');
+			expect(mock.getRepo).not.toHaveReturned();
+		});
+
+		it('should go back to auto-mocking after mockReset', () => {
+			const mock = createMock<{ getRepo: () => { find: () => number } }>();
+
+			mock.getRepo.mockReturnValue({ find: () => 1 });
+			mock.getRepo.mockReset();
+
+			expect(vi.isMockFunction(mock.getRepo().find)).toBe(true);
 		});
 
 		it('should not auto-mock util.inspect.custom', () => {

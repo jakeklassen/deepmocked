@@ -169,10 +169,13 @@ describe('createMock (node:test)', () => {
 			assert.doesNotThrow(() => service.log('hi'));
 		});
 
-		test('uses a stub configured after the mock was called with new, in strict mode', () => {
+		test('throws on unstubbed `new`, then uses a stub configured afterwards', () => {
 			const service = createMock<UserService>({}, { strict: true });
 
-			Reflect.construct(service.save, []);
+			assert.throws(
+				() => Reflect.construct(service.save, []),
+				/Method mock\.save was called without being explicitly stubbed/,
+			);
 			service.save.mock.mockImplementation(() => true);
 
 			assert.equal(service.save(user), true);
@@ -200,6 +203,31 @@ describe('createMock (node:test)', () => {
 
 			assert.equal(service.save(user), true);
 			assert.equal(service.save.mock.callCount(), 1);
+		});
+
+		test('records the auto-mock an unstubbed call returns', () => {
+			const service = createMock<UserService>();
+
+			const repo = service.repo.query();
+
+			assert.equal(service.repo.query.mock.calls[0]?.result, repo);
+		});
+
+		test('records strict-mode throws as errors', () => {
+			const service = createMock<UserService>({}, { strict: true });
+
+			assert.throws(() => service.save(user));
+			assert.ok(service.save.mock.calls[0]?.error instanceof Error);
+		});
+
+		test('mocks methods of nested partials and auto-mocks their missing keys', () => {
+			const service = createMock<UserService>({
+				repo: { find: () => user },
+			});
+
+			assert.equal(service.repo.find(1), user);
+			assert.equal(service.repo.find.mock.callCount(), 1);
+			assert.equal(typeof service.repo.query().rows, 'function');
 		});
 
 		test('does not auto-mock util.inspect.custom', () => {

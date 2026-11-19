@@ -223,6 +223,31 @@ const request = context.switchToHttp().getRequest();
 expect(request.headers.authorization).toBe('Bearer token');
 ```
 
+Values returned by your own implementations are returned exactly as you wrote them (not wrapped in mocks), so `toBe` against them keeps working.
+
+### Nested Partials
+
+Plain objects nested in a partial are deep-mocked like the root: their methods become mocks that keep your implementation, and keys you leave out are auto-mocked.
+
+```typescript
+interface Service {
+	repo: {
+		find: (id: number) => User | undefined;
+		save: (user: User) => void;
+	};
+}
+
+const service = createMock<Service>({
+	repo: { find: (id) => ({ id, name: 'Ada' }) },
+});
+
+service.repo.find(1); // { id: 1, name: 'Ada' }
+expect(service.repo.find).toHaveBeenCalledWith(1);
+service.repo.save(user); // `save` wasn't provided: auto-mocked
+```
+
+`service.repo` is a mock wrapping the object you passed, so it equals it (`toEqual`) but isn't the same object (`toBe`). Existing mocks, class instances, arrays and other non-plain objects are used as-is, and so are values of frozen objects (JavaScript doesn't allow a proxy to replace them).
+
 ### Using Mock Methods
 
 Since all methods are Vitest mocks, you can use all Vitest mock features:
@@ -244,6 +269,8 @@ expect(await service.fetchData()).toBe('second call');
 // Verify calls
 expect(service.fetchData).toHaveBeenCalledTimes(2);
 ```
+
+Call records match what callers receive: an unstubbed call's auto-mocked return value is what `mock.results` and `toHaveReturnedWith` see, and a strict-mode error is recorded as a throw. Returning that auto-mock is the mock's default implementation, so `getMockImplementation()` returns a function even before you stub anything, and `mockReset()` / `mockRestore()` go back to auto-mocking.
 
 ### Mocking Classes
 

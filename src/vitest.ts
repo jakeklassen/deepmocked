@@ -58,14 +58,6 @@ const apiKeys: ReadonlySet<string> = new Set([
 const vitestAdapter: MockAdapter = {
 	fn: (implementation) => vi.fn(implementation),
 	isMock: (value) => vi.isMockFunction(value),
-	invoke: (mock, thisArg, args) => {
-		// Check before calling: a one-off stub (mockReturnValueOnce, ...) is consumed by
-		// the call, so afterwards it would look unstubbed even if it returned undefined
-		const hasImplementation = Boolean((mock as Mock).getMockImplementation());
-		const result: unknown = Reflect.apply(mock, thisArg, args);
-
-		return { result, stubbed: hasImplementation || result !== undefined };
-	},
 	apiKeys,
 };
 
