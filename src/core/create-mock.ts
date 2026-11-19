@@ -13,11 +13,18 @@ export interface MockAdapter {
 	/** Whether a value is already a mock function from this library. */
 	isMock: (value: unknown) => boolean;
 	/**
-	 * Called right after an auto-mocked function runs: whether that call was handled by
-	 * behavior the user configured. When it wasn't, the call returns a nested auto-mock
-	 * instead (or throws in strict mode).
+	 * Calls an auto-mocked function and reports whether the call was handled by behavior
+	 * the user configured. When it wasn't, the core returns a nested auto-mock instead (or
+	 * throws in strict mode).
+	 *
+	 * The adapter owns the whole call so it can inspect the mock both before it runs
+	 * (one-off stubs are consumed by the call) and after.
 	 */
-	isStubbedCall: (mock: AnyFunction, result: unknown) => boolean;
+	invoke: (
+		mock: AnyFunction,
+		thisArg: unknown,
+		args: unknown[],
+	) => { result: unknown; stubbed: boolean };
 	/**
 	 * The library's own API on a mock function (`mockReturnValue`, `mock`, ...). These are
 	 * passed straight to the underlying mock instead of being auto-mocked.
@@ -34,6 +41,9 @@ export interface MockAdapter {
  * and its matchers would read garbage instead of the library's own call records.
  */
 const coreApiKeys: ReadonlySet<string> = new Set(['calls']);
+
+/** `util.inspect.custom` from Node, looked up without importing `node:util`. */
+const inspectCustom = Symbol.for('nodejs.util.inspect.custom');
 
 /**
  * Builds a `createMock` function for a mock library.
@@ -67,15 +77,14 @@ export const createMockFactory = <M extends MockKind>(
 				const propName = prop.toString();
 
 				// Return undefined for special properties to prevent interference:
-				// - 'inspect' & Symbol(util.inspect.custom): Node.js inspection (console.log)
+				// - 'inspect' & util.inspect.custom: Node.js inspection (console.log)
 				// - 'then': Prevents mocks from being treated as Promises
 				// - 'asymmetricMatch': Prevents interference with asymmetric matchers
 				if (
 					prop === 'inspect' ||
 					prop === 'then' ||
 					prop === 'asymmetricMatch' ||
-					(typeof prop === 'symbol' &&
-						propName === 'Symbol(util.inspect.custom)')
+					prop === inspectCustom
 				) {
 					return undefined;
 				}
@@ -154,14 +163,14 @@ export const createMockFactory = <M extends MockKind>(
 		// For auto-mocked functions (no base), add apply trap to handle function calls
 		if (!base) {
 			handler.apply = (fnTarget, thisArg, argsArray) => {
-				const result: unknown = Reflect.apply(
+				const { result, stubbed } = adapter.invoke(
 					fnTarget as AnyFunction,
 					thisArg,
 					argsArray,
 				);
 
 				// If the user stubbed this call, use its result as-is
-				if (adapter.isStubbedCall(fnTarget as AnyFunction, result)) {
+				if (stubbed) {
 					return result;
 				}
 

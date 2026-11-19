@@ -2,6 +2,7 @@
 // `pnpm run test:node`. Type-checked against the source via tsconfig `paths`.
 import assert from 'node:assert/strict';
 import { describe, mock, test } from 'node:test';
+import { inspect } from 'node:util';
 
 import { createMock, type DeepMocked } from 'deepmocked/node';
 
@@ -166,6 +167,93 @@ describe('createMock (node:test)', () => {
 			service.log.mock.mockImplementation(() => undefined);
 
 			assert.doesNotThrow(() => service.log('hi'));
+		});
+
+		test('uses a stub configured after the mock was called with new, in strict mode', () => {
+			const service = createMock<UserService>({}, { strict: true });
+
+			Reflect.construct(service.save, []);
+			service.save.mock.mockImplementation(() => true);
+
+			assert.equal(service.save(user), true);
+		});
+	});
+
+	describe('edge cases', () => {
+		test('uses a stub configured after the mock was called with new', () => {
+			const service = createMock<UserService>();
+
+			Reflect.construct(service.save, []);
+			service.save.mock.mockImplementation(() => true);
+
+			assert.equal(service.save(user), true);
+		});
+
+		test('accepts partial functions with a non-configurable `mock` property', () => {
+			// e.g. a Vitest mock: node:test's mock.fn() can't proxy a function like this
+			const save = Object.defineProperty((_user: User) => true, 'mock', {
+				value: {},
+				writable: false,
+				configurable: false,
+			});
+			const service = createMock<UserService>({ save });
+
+			assert.equal(service.save(user), true);
+			assert.equal(service.save.mock.callCount(), 1);
+		});
+
+		test('does not auto-mock util.inspect.custom', () => {
+			const service = createMock<UserService>();
+
+			assert.equal(Reflect.get(service.repo, inspect.custom), undefined);
+			assert.doesNotThrow(() => inspect(service.repo));
+		});
+	});
+
+	describe('types', () => {
+		test('rejects wrong arguments and keeps implementation parameter types', () => {
+			const service = createMock<UserService>();
+
+			// @ts-expect-error wrong argument type
+			service.repo.find('wrong');
+			// @ts-expect-error too many arguments
+			service.repo.find(1, 2);
+
+			service.repo.find.mock.mockImplementation((id) => {
+				// @ts-expect-error id is a number, not any
+				id.nonexistent();
+
+				return { id: id.valueOf(), profile: { name: 'Ada' } };
+			});
+		});
+
+		test('rejects partials that are not implementations or mocks', () => {
+			// @ts-expect-error a number is not an implementation
+			createMock<UserService>({ save: 123 });
+
+			createMock<UserService>({
+				save: () => true,
+				log: mock.fn((_message: string) => undefined),
+			});
+		});
+
+		test('keeps the mock API on deeply mocked return values', async () => {
+			const service = createMock<UserService>();
+
+			const rows = service.repo.query().rows;
+			const profile = (await service.getUser(1)).profile;
+			rows();
+
+			assert.equal(rows.mock.callCount(), 1);
+			assert.equal(typeof profile, 'function');
+		});
+
+		test('exposes the node:test API, not Vitest', () => {
+			const service = createMock<UserService>();
+
+			// The type check is the test: Vitest's mockReturnValue must not exist here
+			// @ts-expect-error Vitest-only API
+			void service.save.mockReturnValue;
 		});
 	});
 

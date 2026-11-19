@@ -1,3 +1,5 @@
+import { inspect } from 'node:util';
+
 import type { Mock } from 'vitest';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 
@@ -503,6 +505,25 @@ describe('Mocks', () => {
 			expect(Object.prototype.toString.call(tagged)).toBe('[object Tagged]');
 		});
 
+		it('should respect one-off stubs that return undefined', () => {
+			const mock = createMock<{ find: () => { id: number } | undefined }>();
+
+			mock.find.mockReturnValueOnce(undefined);
+			mock.find.mockImplementationOnce(() => undefined);
+
+			expect(mock.find()).toBeUndefined();
+			expect(mock.find()).toBeUndefined();
+			// once both are used up, unstubbed calls auto-mock again
+			expect(mock.find()).toBeDefined();
+		});
+
+		it('should not auto-mock util.inspect.custom', () => {
+			const mock = createMock<TestInterface>();
+
+			expect(mock.nested[inspect.custom as never]).toBeUndefined();
+			expect(() => inspect(mock.nested)).not.toThrow();
+		});
+
 		it('should automock promises so that they are awaitable', async () => {
 			type TypeWithPromiseReturningFunctions = {
 				doSomethingAsync: () => Promise<number>;
@@ -594,10 +615,57 @@ describe('Mocks', () => {
 				mock.func.mockReturnValue(true);
 				expect(mock.func(1, 'test')).toBe(true);
 			});
+
+			it('should not throw for one-off stubs that return undefined in strict mode', () => {
+				const mock = createMock<{ log: () => void }>({}, { strict: true });
+
+				mock.log.mockImplementationOnce(() => undefined);
+
+				expect(() => mock.log()).not.toThrow();
+				expect(() => mock.log()).toThrow(
+					'Method mock.log was called without being explicitly stubbed',
+				);
+			});
 		});
 	});
 
 	describe('type inference', () => {
+		it('should reject wrong arguments and keep implementation parameter types', () => {
+			const mock = createMock<{ get: (id: number) => string }>();
+
+			// @ts-expect-error wrong argument type
+			mock.get('wrong');
+			// @ts-expect-error too many arguments
+			mock.get(1, 2);
+
+			mock.get.mockImplementation((id) => {
+				expectTypeOf(id).toEqualTypeOf<number>();
+
+				return String(id);
+			});
+			expectTypeOf(mock.get).parameters.toEqualTypeOf<[id: number]>();
+		});
+
+		it('should reject partials that are not implementations or mocks', () => {
+			interface Reader {
+				read: (id: number) => string;
+				maybe?: (id: number) => string;
+				nullable: ((id: number) => string) | null;
+			}
+
+			// @ts-expect-error a number is not an implementation
+			createMock<Reader>({ read: 123 });
+			// @ts-expect-error a string is not an implementation
+			createMock<Reader>({ maybe: 'x' });
+
+			createMock<Reader>({
+				read: (id) => String(id),
+				maybe: undefined,
+				nullable: null,
+			});
+			createMock<Reader>({ read: vi.fn(), maybe: createMock<Reader>().read });
+		});
+
 		it('should properly type mocked functions with DeepMocked return values', () => {
 			interface ExecutionContext {
 				switchToHttp: () => {

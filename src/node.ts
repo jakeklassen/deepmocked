@@ -1,4 +1,4 @@
-import { mock, type Mock } from 'node:test';
+import { mock, type MockFunctionContext } from 'node:test';
 
 import { createMockFactory, type MockAdapter } from './core/create-mock';
 import type {
@@ -11,13 +11,22 @@ import type {
 
 export type { MockOptions };
 
-/** Types every mocked function as `node:test`'s `Mock`. */
-export interface NodeMockKind extends MockKind {
-	readonly mock: Mock<this['fn']>;
+/**
+ * Gives every mocked function `node:test`'s `.mock` context. Internal: not part of the
+ * public API.
+ *
+ * Deliberately not `node:test`'s `Mock<F>`, which is `F & { mock }`: re-intersecting the
+ * original `F` lets its own signatures (and overloads) win over the deeply mocked one,
+ * so return values would lose their mocks.
+ */
+interface NodeMockKind extends MockKind {
+	readonly mock: this['fn'] extends infer F extends AnyFunction
+		? { mock: MockFunctionContext<F> }
+		: never;
 }
 
 /**
- * A deeply mocked `T`: every function is a `node:test` `Mock` (with its `.mock`
+ * A deeply mocked `T`: every function is a `node:test` mock (with its `.mock`
  * context), and nested objects and function return values are deeply mocked too
  * (up to 5 levels).
  */
@@ -44,7 +53,12 @@ const unstubbedCalls = new WeakMap<AnyFunction, { ran: boolean }>();
 const nodeAdapter: MockAdapter = {
 	fn: (implementation) => {
 		if (implementation) {
-			return mock.fn(implementation);
+			// mock.fn() proxies the function it is given and answers `.mock` itself, which
+			// breaks on functions that already have a non-configurable `mock` (a Vitest mock,
+			// for one). A fresh wrapper avoids handing it the user's function.
+			return mock.fn(function (this: unknown, ...args: unknown[]): unknown {
+				return Reflect.apply(implementation, this, args);
+			});
 		}
 
 		const state = { ran: false };
@@ -70,17 +84,18 @@ const nodeAdapter: MockAdapter = {
 			typeof Reflect.get(context, 'mockImplementation') === 'function'
 		);
 	},
-	isStubbedCall: (fn) => {
+	invoke: (fn, thisArg, args) => {
 		const state = unstubbedCalls.get(fn);
 
 		if (!state) {
-			return true;
+			return { result: Reflect.apply(fn, thisArg, args), stubbed: true };
 		}
 
-		const ran = state.ran;
+		// Reset first: the sentinel can also run outside this call path (e.g. `new fn()`)
 		state.ran = false;
+		const result: unknown = Reflect.apply(fn, thisArg, args);
 
-		return !ran;
+		return { result, stubbed: !state.ran };
 	},
 	apiKeys,
 };

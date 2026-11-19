@@ -43,6 +43,8 @@ bun add -d deepmocked
 
 Each adapter uses the mock library you already have installed (`vitest` for `deepmocked/vitest`); none of them are installed for you. `deepmocked/node` needs nothing beyond Node itself (and `@types/node` for types).
 
+`deepmocked` is ESM-only. Modern Node can `require()` it, but TypeScript projects that compile to CommonJS (`.cts` files, or `module: node16` without `"type": "module"`) can't import it.
+
 ### Migrating from `vitest-create-mock`
 
 The API is the same. Change the package and the import path:
@@ -147,6 +149,7 @@ Recursively transforms a type so that all methods become Vitest mocks while pres
 - **Primitives**: Left as-is
 - **Excluded properties**: `then` and `asymmetricMatch` are excluded to prevent interference with Promise detection and Vitest matchers
 - **Depth fallback**: At very deep nesting levels, function signatures gracefully degrade to permissive typing to avoid TypeScript complexity limits
+- **Known limitations**: overloaded methods are typed by their last overload, and generic methods lose their type parameters
 
 #### `PartialFuncReturn<T>`
 

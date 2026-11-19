@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 
 import { createMockFactory, type MockAdapter } from './core/create-mock';
 import type {
+	AnyFunction,
 	DeepMocked as CoreDeepMocked,
 	MockKind,
 	MockOptions,
@@ -11,9 +12,9 @@ import type {
 
 export type { MockOptions };
 
-/** Types every mocked function as Vitest's `Mock`. */
-export interface VitestMockKind extends MockKind {
-	readonly mock: Mock<this['fn']>;
+/** Types every mocked function as Vitest's `Mock`. Internal: not part of the public API. */
+interface VitestMockKind extends MockKind {
+	readonly mock: this['fn'] extends AnyFunction ? Mock<this['fn']> : never;
 }
 
 /**
@@ -57,10 +58,14 @@ const apiKeys: ReadonlySet<string> = new Set([
 const vitestAdapter: MockAdapter = {
 	fn: (implementation) => vi.fn(implementation),
 	isMock: (value) => vi.isMockFunction(value),
-	// Unchanged from vitest-create-mock: a configured implementation, or any
-	// non-undefined result, counts as stubbed
-	isStubbedCall: (mock, result) =>
-		Boolean((mock as Mock).getMockImplementation()) || result !== undefined,
+	invoke: (mock, thisArg, args) => {
+		// Check before calling: a one-off stub (mockReturnValueOnce, ...) is consumed by
+		// the call, so afterwards it would look unstubbed even if it returned undefined
+		const hasImplementation = Boolean((mock as Mock).getMockImplementation());
+		const result: unknown = Reflect.apply(mock, thisArg, args);
+
+		return { result, stubbed: hasImplementation || result !== undefined };
+	},
 	apiKeys,
 };
 

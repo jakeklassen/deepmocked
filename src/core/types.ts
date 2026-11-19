@@ -10,12 +10,16 @@ export type AnyFunction = (...args: any[]) => any;
  *
  * ```ts
  * interface VitestMockKind extends MockKind {
- *   readonly mock: Mock<this['fn']>;
+ *   readonly mock: this['fn'] extends AnyFunction ? Mock<this['fn']> : never;
  * }
  * ```
+ *
+ * `fn` must stay `unknown` here: `MockOf` intersects it with the real function type,
+ * and a function-typed base would add its own permissive `(...args: any[]) => any`
+ * signature to every mocked function.
  */
 export interface MockKind {
-	readonly fn: AnyFunction;
+	readonly fn: unknown;
 	readonly mock: unknown;
 }
 
@@ -47,8 +51,11 @@ export type DeepPartial<T> = {
  * This dual support prevents double-wrapping and allows flexible mock composition.
  */
 export type PartialFuncReturn<T, M extends MockKind> = {
-	[K in keyof T]?: T[K] extends (...args: infer A) => infer U
-		? ((...args: A) => PartialFuncReturn<U, M>) | DeepMocked<T[K], M>
+	[K in keyof T]?: NonNullable<T[K]> extends (...args: infer A) => infer U
+		? // An implementation, or an existing mock of this function (mock composition)
+			| ((...args: A) => PartialFuncReturn<U, M>)
+			| MockOf<M, NonNullable<T[K]>>
+			| (null extends T[K] ? null : never)
 		: DeepPartial<T[K]> | DeepMocked<T[K], M>;
 };
 
