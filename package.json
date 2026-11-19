@@ -1,13 +1,15 @@
 {
 	"name": "deepmocked",
 	"version": "0.3.0",
-	"description": "Type-safe deep mocks for TypeScript tests. Auto-mocks nested properties and return values, with adapters per mock library (Vitest, node:test).",
+	"description": "Type-safe deep mocks for TypeScript tests. Auto-mocks nested properties and return values, with adapters per mock library (Vitest, node:test, Sinon).",
 	"keywords": [
 		"auto-mock",
 		"createMock",
 		"deep-mock",
+		"japa",
 		"mock",
 		"node:test",
+		"sinon",
 		"test",
 		"typescript",
 		"vitest"
@@ -35,6 +37,10 @@
 			"types": "./dist/node.d.ts",
 			"default": "./dist/node.js"
 		},
+		"./sinon": {
+			"types": "./dist/sinon.d.ts",
+			"default": "./dist/sinon.js"
+		},
 		"./package.json": "./package.json"
 	},
 	"publishConfig": {
@@ -48,7 +54,7 @@
 		"format": "oxfmt .",
 		"format:check": "oxfmt --check .",
 		"test": "vitest",
-		"test:node": "tsdown && node --test src/node.test.ts",
+		"test:node": "tsdown && node --test src/node.test.ts src/sinon.test.ts",
 		"check:package": "node scripts/check-package.mjs",
 		"typecheck": "tsc --noEmit",
 		"release": "bumpp && npm publish",
@@ -56,20 +62,30 @@
 	},
 	"devDependencies": {
 		"@types/node": "^26.6.6",
+		"@types/sinon": "^22.0.2",
 		"@vitest/coverage-v8": "^5.1.1",
 		"bumpp": "^12.3.0",
 		"oxfmt": "^0.79.0",
 		"oxlint": "^1.94.0",
 		"oxlint-tsgolint": "^7.0.2007",
+		"sinon": "^22.1.0",
 		"tsdown": "^0.23.7",
 		"typescript": "^7.0.2",
 		"vite": "^8.3.8",
 		"vitest": "^5.1.1"
 	},
 	"peerDependencies": {
+		"@types/sinon": "^22",
+		"sinon": "^22",
 		"vitest": "^3 || ^4 || ^5"
 	},
 	"peerDependenciesMeta": {
+		"@types/sinon": {
+			"optional": true
+		},
+		"sinon": {
+			"optional": true
+		},
 		"vitest": {
 			"optional": true
 		}

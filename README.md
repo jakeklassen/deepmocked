@@ -8,7 +8,7 @@ Type-safe, deeply mocked objects for TypeScript tests. `createMock<T>()` gives y
 | ------------------- | --------------------------------- | ------------ |
 | `deepmocked/vitest` | Vitest (`vi.fn`)                  | ✅ Available |
 | `deepmocked/node`   | `node:test` (`mock.fn`)           | ✅ Available |
-| `deepmocked/sinon`  | Sinon (works with Japa, AdonisJS) | Planned      |
+| `deepmocked/sinon`  | Sinon (works with Japa, AdonisJS) | ✅ Available |
 | `deepmocked/jest`   | Jest / `jest-mock`                | Planned      |
 
 It started as a port of [@golevelup/ts-jest](https://github.com/golevelup/nestjs/tree/master/packages/testing/ts-jest)'s `createMock`, and was previously published as [`vitest-create-mock`](https://www.npmjs.com/package/vitest-create-mock).
@@ -41,7 +41,7 @@ yarn add -D deepmocked
 bun add -d deepmocked
 ```
 
-Each adapter uses the mock library you already have installed (`vitest` for `deepmocked/vitest`); none of them are installed for you. `deepmocked/node` needs nothing beyond Node itself (and `@types/node` for types).
+Each adapter uses the mock library you already have installed (`vitest` for `deepmocked/vitest`); none of them are installed for you. `deepmocked/node` needs nothing beyond Node itself (and `@types/node` for types). `deepmocked/sinon` needs `sinon` 22 (and `@types/sinon` for types).
 
 `deepmocked` is ESM-only. Modern Node can `require()` it, but TypeScript projects that compile to CommonJS (`.cts` files, or `module: node16` without `"type": "module"`) can't import it.
 
@@ -111,6 +111,27 @@ test('gets a user', async () => {
 - Stub with `fn.mock.mockImplementation()` / `mockImplementationOnce()`; inspect with `fn.mock.calls` and `fn.mock.callCount()`.
 - A stub that returns `undefined` is respected (it isn't replaced by an auto-mock), including in strict mode.
 - Mocks are created on the global `mock` tracker, so `mock.restoreAll()` and `mock.reset()` apply to them; after a restore, unstubbed calls go back to returning auto-mocks.
+
+### With Sinon (Japa, AdonisJS, Mocha, ...)
+
+`deepmocked/sinon` makes every function a real Sinon stub, so it works with any test runner, including [Japa](https://japa.dev/), which has no mocking library of its own:
+
+```typescript
+import { createMock } from 'deepmocked/sinon';
+import sinon from 'sinon';
+
+const userService = createMock<UserService>();
+userService.getUser.resolves({ name: 'John', email: 'john@example.com' });
+
+const user = await userService.getUser(1);
+
+sinon.assert.calledOnceWithExactly(userService.getUser, 1);
+userService.deleteUser.rejects(new Error('forbidden'));
+```
+
+- The whole Sinon stub API works: `returns`, `resolves`, `throws`, `callsFake`, `withArgs`, `onCall`, `calledWith`, `getCall`, ... and so do `sinon.assert` and other Sinon-aware assertion libraries.
+- Stubs are created with `sinon.stub()`, so `sinon.reset()` / `sinon.resetHistory()` apply to them. After any reset (`stub.reset()`, `stub.resetBehavior()`, `sinon.reset()`), unstubbed calls go back to returning auto-mocks, and a partial's implementation comes back.
+- One Sinon-specific quirk: values returned by unstubbed calls are stubs too, and Sinon's cross-stub checks (`calledBefore`, `sinon.assert.callOrder`, ...) need their `id`. So `id` on such a value is Sinon's stub id rather than an auto-mock. Stub `id` explicitly if your code reads it.
 
 The rest of this README uses Vitest in its examples.
 

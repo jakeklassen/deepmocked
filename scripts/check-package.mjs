@@ -42,7 +42,12 @@ run('tar', [
 	join(modules, 'deepmocked'),
 	'--strip-components=1',
 ]);
-symlinkSync(join(root, 'node_modules', 'vitest'), join(modules, 'vitest'));
+for (const dependency of ['vitest', 'sinon']) {
+	symlinkSync(
+		join(root, 'node_modules', dependency),
+		join(modules, dependency),
+	);
+}
 symlinkSync(join(root, 'node_modules', '@types'), join(modules, '@types'));
 cpSync(join(root, 'test', 'package'), consumer, { recursive: true });
 writeFileSync(
@@ -69,14 +74,18 @@ for (const [module, moduleResolution] of [
 				noEmit: true,
 				skipLibCheck: false,
 			},
-			files: ['vitest.ts', 'node.ts'],
+			files: ['vitest.ts', 'node.ts', 'sinon.ts'],
 		}),
 	);
 	run(tsc, ['-p', consumer]);
 }
 
 // 4. Every export resolves and loads at runtime
-for (const entry of ['deepmocked/vitest', 'deepmocked/node']) {
+for (const entry of [
+	'deepmocked/vitest',
+	'deepmocked/node',
+	'deepmocked/sinon',
+]) {
 	console.log(`check-package: import ${entry}`);
 	run(
 		process.execPath,

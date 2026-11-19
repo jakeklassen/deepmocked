@@ -40,7 +40,7 @@
 			}
 		},
 		{
-			"files": ["src/node.test.ts"],
+			"files": ["src/node.test.ts", "src/sinon.test.ts"],
 			"rules": {
 				"typescript/no-floating-promises": "off"
 			}

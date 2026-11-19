@@ -6,8 +6,9 @@ export default defineConfig({
 			...configDefaults.exclude,
 			// tmp/ holds throwaway consumer projects with their own vitest copy
 			'tmp/**',
-			// runs under `node --test` instead: pnpm run test:node
+			// run under `node --test` instead: pnpm run test:node
 			'src/node.test.ts',
+			'src/sinon.test.ts',
 		],
 	},
 });
