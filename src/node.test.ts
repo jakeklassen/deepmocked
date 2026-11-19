@@ -230,6 +230,26 @@ describe('createMock (node:test)', () => {
 			assert.equal(typeof service.repo.query().rows, 'function');
 		});
 
+		test('constructs partial constructors with new', () => {
+			class Point {
+				readonly target: unknown;
+				readonly x: number;
+				constructor(x: number) {
+					this.x = x;
+					this.target = new.target;
+				}
+			}
+			// Constructor types aren't mocked by DeepMocked, so type the mock loosely
+			const factory = createMock<Record<string, unknown>>({ Point });
+
+			const point: unknown = Reflect.construct(factory.Point, [1]);
+
+			assert.ok(point instanceof Point);
+			assert.equal(point.target, Point);
+			assert.equal(point.x, 1);
+			assert.equal(factory.Point.mock.callCount(), 1);
+		});
+
 		test('does not auto-mock util.inspect.custom', () => {
 			const service = createMock<UserService>();
 

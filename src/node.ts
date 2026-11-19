@@ -44,10 +44,13 @@ const apiKeys: ReadonlySet<string> = new Set(['mock']);
 const nodeAdapter: MockAdapter = {
 	// mock.fn() proxies the function it is given and answers `.mock` itself, which breaks
 	// on functions that already have a non-configurable `mock` (a Vitest mock, for one).
-	// A fresh wrapper avoids handing it the user's function.
+	// A fresh wrapper avoids handing it the user's function. It forwards `new` as a
+	// construction, so constructors keep `new.target` and `instanceof`.
 	fn: (implementation) =>
 		mock.fn(function (this: unknown, ...args: unknown[]): unknown {
-			return Reflect.apply(implementation, this, args);
+			return new.target
+				? Reflect.construct(implementation, args)
+				: Reflect.apply(implementation, this, args);
 		}),
 	isMock: (value) => {
 		if (typeof value !== 'function') {
