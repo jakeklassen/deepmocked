@@ -3,8 +3,12 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
+import * as chai from 'chai';
 import { createMock, type DeepMocked } from 'deepmocked/sinon';
 import sinon from 'sinon';
+import sinonChai from 'sinon-chai';
+
+chai.use(sinonChai);
 
 interface User {
 	id: number;
@@ -151,6 +155,103 @@ describe('createMock (sinon)', () => {
 		});
 	});
 
+	describe('callback behaviors', () => {
+		test('callsArg counts as stubbed, including in strict mode', () => {
+			const service = createMock<{ read: (callback: () => number) => number }>(
+				{},
+				{ strict: true },
+			);
+			let calls = 0;
+
+			service.read.callsArg(0);
+
+			// Like a fresh Sinon stub: the callback runs and its result is returned
+			assert.equal(
+				service.read(() => ++calls),
+				1,
+			);
+			assert.equal(calls, 1);
+		});
+
+		test('keeps a configured return value or fake alongside callsArg', () => {
+			const service = createMock<{ read: (callback: () => void) => number }>();
+
+			service.read.returns(5);
+			service.read.callsArgWith(0);
+			assert.equal(
+				service.read(() => undefined),
+				5,
+			);
+
+			service.read.callsFake(() => 6);
+			service.read.callsArg(0);
+			assert.equal(
+				service.read(() => undefined),
+				6,
+			);
+		});
+
+		test('goes back to auto-mocking after a reset', () => {
+			const service = createMock<{ read: (callback: () => void) => object }>();
+
+			service.read.callsArg(0);
+			service.read.reset();
+
+			assert.equal(typeof service.read(() => undefined), 'function');
+		});
+
+		test('invokeCallback runs the last callback', () => {
+			const service = createMock<{ read: (callback: () => void) => void }>();
+			let calls = 0;
+
+			service.read(() => calls++);
+			// @types/sinon types invokeCallback's arguments as the stub's own parameters
+			(service.read.invokeCallback as () => void)();
+
+			assert.equal(calls, 1);
+		});
+	});
+
+	describe('construction', () => {
+		test('records `new` on auto-mocked functions', () => {
+			const factory = createMock<Record<string, unknown>>();
+			const Ctor = factory.Ctor;
+
+			Ctor.returns(42);
+			const instance: unknown = Reflect.construct(Ctor, []);
+
+			assert.ok(Ctor.calledWithNew());
+			assert.equal(Ctor.returnValues[0], instance);
+		});
+	});
+
+	describe('sinon-chai', () => {
+		test('asserts on auto-mocked functions, including `always`', () => {
+			const service = createMock<UserService>();
+
+			service.log('actual');
+
+			chai.expect(service.log).to.have.been.calledOnceWith('actual');
+			chai.expect(service.log).to.have.always.been.calledWith('actual');
+			chai.expect(service.save).to.have.callCount(0);
+		});
+
+		test('fails `always` assertions that have no Sinon counterpart', () => {
+			const service = createMock<UserService>();
+
+			service.log('actual');
+
+			assert.throws(() =>
+				chai.expect(service.log).to.have.always.been.calledOnceWith('wrong'),
+			);
+			assert.throws(() =>
+				chai
+					.expect(service.log)
+					.to.have.always.been.calledOnceWithExactly('wrong'),
+			);
+		});
+	});
+
 	describe('sinon.assert', () => {
 		test('works on auto-mocked functions', () => {
 			const service = createMock<UserService>();
@@ -180,6 +281,12 @@ describe('createMock (sinon)', () => {
 				() => sinon.assert.callOrder(service.log, service.save),
 				(error: Error) => error.name === 'AssertError',
 			);
+		});
+
+		test('supports named stubs', () => {
+			const service = createMock<UserService>();
+
+			assert.equal(service.save.named('save').toString(), 'save');
 		});
 
 		test('reports failures with readable messages', () => {

@@ -90,6 +90,8 @@ const apiKeys: ReadonlySet<string> = new Set([
 	'printf',
 	'named',
 	'displayName',
+	'toString',
+	'invokeCallback',
 	'isSinonProxy',
 	// Sinon's type marker, and `proxy`: a stub has none, so this reads as undefined.
 	// sinon.assert follows `fake.proxy` when it's a Sinon proxy; an auto-mocked one would
@@ -141,25 +143,88 @@ const apiKeys: ReadonlySet<string> = new Set([
 	'withArgs',
 	'reset',
 	'resetBehavior',
+	// Not on a stub, so these read as undefined, like on a real one. sinon-chai picks
+	// `always<Method>` when it exists; an auto-mocked one would make `.always` assertions
+	// pass regardless of the calls.
+	'alwaysCalledAfter',
+	'alwaysCalledBefore',
+	'alwaysCalledImmediatelyAfter',
+	'alwaysCalledImmediatelyBefore',
+	'alwaysCalledOnceWith',
+	'alwaysCalledOnceWithExactly',
+	'alwaysCalledOnceWithMatch',
 ]);
+
+/**
+ * Behaviors that invoke a callback argument. Sinon keeps an existing `callsFake`
+ * implementation alongside them, so on its own the default implementation would still
+ * run (returning an auto-mock, or throwing in strict mode).
+ */
+const callbackBehaviors = [
+	'callsArg',
+	'callsArgAsync',
+	'callsArgOn',
+	'callsArgOnAsync',
+	'callsArgWith',
+	'callsArgWithAsync',
+	'callsArgOnWith',
+	'callsArgOnWithAsync',
+] as const;
+
+/** Replaces a stub's own method, keeping the original callable. */
+const overrideMethod = <K extends keyof SinonStub>(
+	stub: SinonStub,
+	key: K,
+	method: (
+		original: (...args: unknown[]) => unknown,
+		args: unknown[],
+	) => unknown,
+): void => {
+	const original = (
+		Reflect.get(stub, key) as (...args: unknown[]) => unknown
+	).bind(stub);
+
+	Object.defineProperty(stub, key, {
+		configurable: true,
+		writable: true,
+		value: (...args: unknown[]) => method(original, args),
+	});
+};
 
 const sinonAdapter: MockAdapter = {
 	fn: (implementation) => {
 		const stub = sinon.stub().callsFake(implementation);
-		const resetBehavior = stub.resetBehavior.bind(stub);
+		// Whether the default implementation is still what the stub falls back to. Reads
+		// Sinon's (long-stable, internal) default behavior; if that ever changes shape,
+		// this is false and Sinon's own semantics apply.
+		const usingDefault = () =>
+			Reflect.get(Object(Reflect.get(stub, 'defaultBehavior')), 'fakeFn') ===
+			implementation;
 
 		// Sinon's resets (stub.reset(), stub.resetBehavior(), sinon.reset(), ...) all clear
 		// behavior through this method, which would leave the stub returning undefined.
 		// Restore the default implementation afterwards, so auto-mocking (or the partial's
 		// implementation) comes back after a reset, as with the other adapters.
-		Object.defineProperty(stub, 'resetBehavior', {
-			configurable: true,
-			writable: true,
-			value() {
-				resetBehavior();
-				stub.callsFake(implementation);
-			},
+		overrideMethod(stub, 'resetBehavior', (resetBehavior) => {
+			resetBehavior();
+			stub.callsFake(implementation);
 		});
+
+		// A callback behavior configured over the default implementation should behave
+		// like on a fresh stub: run the callback and return undefined. `returns()` drops
+		// the default implementation and keeps the callback.
+		for (const key of callbackBehaviors) {
+			overrideMethod(stub, key, (callbackBehavior, args) => {
+				const replaceDefault = usingDefault();
+				const result = callbackBehavior(...args);
+
+				if (replaceDefault) {
+					stub.returns(undefined);
+				}
+
+				return result;
+			});
+		}
 
 		return stub;
 	},
