@@ -33,8 +33,8 @@ bun add -d vitest-create-mock
 ## Quick Start
 
 ```typescript
-import { createMock } from 'vitest-create-mock';
 import { describe, expect, it } from 'vitest';
+import { createMock } from 'vitest-create-mock';
 
 interface UserService {
 	getUser: (id: number) => Promise<{ name: string; email: string }>;

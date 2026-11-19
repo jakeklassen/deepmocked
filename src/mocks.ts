@@ -40,7 +40,7 @@ export type PartialFuncReturn<T> = {
  * This is needed because Record<string, unknown> properties should become `any` for
  * proxy support, while concrete types should maintain their proper types.
  */
-// oxlint-disable-next-line typescript/ban-types -- {} intentionally used to detect unknown type
+// oxlint-disable-next-line typescript/no-empty-object-type -- {} intentionally used to detect unknown type
 type IsUnknown<T> = unknown extends T ? (T extends {} ? false : true) : false;
 
 /**
@@ -109,9 +109,9 @@ type DeepMockedWithDepth<T, D extends number[]> = D extends []
 		T extends Promise<infer U>
 		? Promise<DeepMockedWithDepth<U, DecrementDepth<D>>>
 		: {
-				[K in keyof T as K extends ExcludedMockProperties
-					? never
-					: K]: IsUnknown<T[K]> extends true
+				[
+					K in keyof T as K extends ExcludedMockProperties ? never : K
+				]: IsUnknown<T[K]> extends true
 					? // oxlint-disable-next-line typescript/no-explicit-any -- unknown types become any for proxy support
 						any
 					: // oxlint-disable-next-line typescript/no-explicit-any -- generic constraint for any function signature
@@ -121,9 +121,8 @@ type DeepMockedWithDepth<T, D extends number[]> = D extends []
 							: MockedFunctionWithDepth<NonNullable<T[K]>, D>
 						: NonNullable<T[K]> extends object
 							? undefined extends T[K]
-								?
-										| DeepMockedWithDepth<NonNullable<T[K]>, DecrementDepth<D>>
-										| undefined
+								? | DeepMockedWithDepth<NonNullable<T[K]>, DecrementDepth<D>>
+									| undefined
 								: DeepMockedWithDepth<T[K], DecrementDepth<D>>
 							: T[K];
 			};

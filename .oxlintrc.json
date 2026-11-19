@@ -26,7 +26,9 @@
 		"typescript/prefer-enum-initializers": "error",
 		"typescript/no-inferrable-types": "error",
 		"typescript/no-explicit-any": "warn",
-		"typescript/ban-types": "error",
+		"typescript/no-empty-object-type": "error",
+		"typescript/no-unsafe-function-type": "error",
+		"typescript/no-wrapper-object-types": "error",
 		"unicorn/prefer-number-properties": "error"
 	},
 	"overrides": [

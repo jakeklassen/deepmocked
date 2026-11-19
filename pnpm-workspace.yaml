@@ -1,5 +1,0 @@
-onlyBuiltDependencies:
-  - '@nestjs/core'
-  - core-js
-  - esbuild
-  - unrs-resolver

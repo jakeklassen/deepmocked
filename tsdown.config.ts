@@ -5,6 +5,8 @@ export default defineConfig([
 		entry: ['./src/index.ts'],
 		platform: 'neutral',
 		dts: true,
-		external: [/^vitest$/, /^@vitest\//],
+		deps: {
+			neverBundle: [/^vitest$/, /^@vitest\//],
+		},
 	},
 ]);
